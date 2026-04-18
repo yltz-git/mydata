@@ -1,0 +1,2334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>量子手势交互系统 | 3D粒子爱心</title>
+    <!-- TensorFlow.js 核心库 -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
+    <!-- Handpose 模型 -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7/dist/handpose.min.js"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Three.js 后期效果库 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/FilmShader.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', 'Orbitron', sans-serif;
+            background: #000;
+            color: #fff;
+            min-height: 100vh;
+            overflow: hidden;
+            background: radial-gradient(circle at 20% 50%, rgba(9, 9, 39, 0.9) 0%, rgba(0, 0, 0, 1) 70%);
+        }
+        
+        #app {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        #threeCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        
+        .matrix-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            background: 
+                linear-gradient(90deg, rgba(0, 255, 255, 0.03) 1px, transparent 1px) 0 0 / 50px 50px,
+                linear-gradient(rgba(0, 255, 255, 0.03) 1px, transparent 1px) 0 0 / 50px 50px;
+            animation: gridMove 20s linear infinite;
+        }
+        
+        @keyframes gridMove {
+            0% { background-position: 0 0; }
+            100% { background-position: 50px 50px; }
+        }
+        
+        .scanlines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            background: linear-gradient(
+                to bottom,
+                transparent 50%,
+                rgba(0, 255, 255, 0.03) 51%,
+                transparent 52%
+            );
+            background-size: 100% 4px;
+            animation: scanlines 8s linear infinite;
+            pointer-events: none;
+        }
+        
+        @keyframes scanlines {
+            0% { background-position: 0 0; }
+            100% { background-position: 0 100%; }
+        }
+        
+        .video-overlay {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            width: 300px;
+            height: 225px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 
+                0 0 30px rgba(0, 255, 255, 0.5),
+                inset 0 0 20px rgba(0, 255, 255, 0.2);
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(0, 255, 255, 0.5);
+            backdrop-filter: blur(10px);
+        }
+        
+        .video-overlay::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: linear-gradient(45deg, 
+                #00ffff, #00ffaa, #00aaff, #ff00aa, 
+                #ffaa00, #aa00ff, #00ffff);
+            background-size: 400%;
+            border-radius: 10px;
+            z-index: -1;
+            animation: borderGlow 8s linear infinite;
+            filter: blur(10px);
+            opacity: 0.7;
+        }
+        
+        @keyframes borderGlow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        #videoElement {
+            width: 100%;
+            height: 100%;
+            display: block;
+            transform: scaleX(-1);
+            filter: contrast(1.2) saturate(1.5);
+        }
+        
+        #canvasElement {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* 主控制面板 */
+        .main-controls {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            z-index: 100;
+            background: rgba(0, 15, 30, 0.85);
+            backdrop-filter: blur(15px);
+            border-radius: 12px;
+            padding: 25px;
+            width: 380px;
+            box-shadow: 
+                0 0 40px rgba(0, 255, 255, 0.3),
+                inset 0 0 20px rgba(0, 255, 255, 0.1);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-top: 1px solid rgba(0, 255, 255, 0.6);
+            border-left: 1px solid rgba(0, 255, 255, 0.6);
+        }
+        
+        .main-controls::before {
+            content: '';
+            position: absolute;
+            top: -1px;
+            left: -1px;
+            right: -1px;
+            bottom: -1px;
+            background: linear-gradient(45deg, 
+                rgba(0, 255, 255, 0.1), 
+                rgba(0, 255, 170, 0.1), 
+                rgba(0, 170, 255, 0.1));
+            border-radius: 13px;
+            z-index: -1;
+        }
+        
+        .system-title {
+            text-align: center;
+            margin-bottom: 25px;
+            position: relative;
+            padding-bottom: 15px;
+        }
+        
+        .system-title::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 25%;
+            width: 50%;
+            height: 2px;
+            background: linear-gradient(90deg, 
+                transparent, 
+                #00ffff, 
+                #00ffaa, 
+                #00ffff, 
+                transparent);
+        }
+        
+        h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+            background: linear-gradient(to right, #00ffff, #00ffaa, #00aaff);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+            letter-spacing: 1px;
+        }
+        
+        .subtitle {
+            font-size: 0.9rem;
+            color: #a0e7ff;
+            opacity: 0.8;
+            font-weight: 300;
+        }
+        
+        .control-section {
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+        }
+        
+        .section-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .section-icon {
+            width: 24px;
+            height: 24px;
+            margin-right: 10px;
+            background: linear-gradient(135deg, #00ffff, #00ffaa);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #001122;
+            font-weight: bold;
+        }
+        
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #00ffff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        /* 滑块样式 */
+        .slider-group {
+            margin-bottom: 15px;
+        }
+        
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            color: #a0e7ff;
+        }
+        
+        .slider-value {
+            color: #00ffaa;
+            font-weight: bold;
+            font-family: 'Orbitron', monospace;
+            background: rgba(0, 255, 170, 0.1);
+            padding: 2px 8px;
+            border-radius: 10px;
+            min-width: 60px;
+            text-align: center;
+        }
+        
+        .slider-container {
+            position: relative;
+            height: 20px;
+            background: rgba(0, 30, 60, 0.8);
+            border-radius: 10px;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            overflow: hidden;
+        }
+        
+        .slider-track {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: linear-gradient(90deg, #0066ff, #00ffaa);
+            width: 50%;
+            border-radius: 10px;
+        }
+        
+        input[type="range"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            -webkit-appearance: none;
+            background: transparent;
+            outline: none;
+            z-index: 2;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #00ffff;
+            cursor: pointer;
+            box-shadow: 
+                0 0 15px #00ffff,
+                0 0 30px rgba(0, 255, 255, 0.5);
+            border: 2px solid #ffffff;
+            transition: all 0.2s;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 
+                0 0 20px #00ffff,
+                0 0 40px rgba(0, 255, 255, 0.7);
+        }
+        
+        /* 按钮样式 */
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .btn {
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+            letter-spacing: 1px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(255, 255, 255, 0.2), 
+                transparent);
+            transition: left 0.5s;
+        }
+        
+        .btn:hover::before {
+            left: 100%;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #0066ff, #00aaff);
+            color: white;
+            box-shadow: 0 5px 15px rgba(0, 102, 255, 0.4);
+        }
+        
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #00aaff, #00ffff);
+            box-shadow: 0 8px 20px rgba(0, 170, 255, 0.6);
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(135deg, #ff0066, #ff00aa);
+            color: white;
+            box-shadow: 0 5px 15px rgba(255, 0, 102, 0.4);
+        }
+        
+        .btn-secondary:hover {
+            background: linear-gradient(135deg, #ff00aa, #ff66ff);
+            box-shadow: 0 8px 20px rgba(255, 0, 170, 0.6);
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        
+        /* 颜色选择器 */
+        .color-picker {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .color-option {
+            height: 40px;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .color-option:hover {
+            transform: scale(1.05);
+        }
+        
+        .color-option.active {
+            border-color: #00ffff;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.7);
+        }
+        
+        .color-option::after {
+            content: '✓';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-weight: bold;
+            font-size: 1.2rem;
+            text-shadow: 0 0 5px black;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .color-option.active::after {
+            opacity: 1;
+        }
+        
+        /* 状态面板 */
+        .status-panel {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            z-index: 100;
+            background: rgba(0, 15, 30, 0.85);
+            backdrop-filter: blur(15px);
+            border-radius: 12px;
+            padding: 20px;
+            width: 300px;
+            box-shadow: 
+                0 0 40px rgba(0, 255, 255, 0.3),
+                inset 0 0 20px rgba(0, 255, 255, 0.1);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+        
+        .status-item {
+            background: rgba(0, 30, 60, 0.5);
+            border-radius: 8px;
+            padding: 12px;
+            border: 1px solid rgba(0, 255, 255, 0.2);
+        }
+        
+        .status-label {
+            font-size: 0.8rem;
+            color: #a0e7ff;
+            margin-bottom: 5px;
+            display: block;
+        }
+        
+        .status-value {
+            font-family: 'Orbitron', monospace;
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #00ffaa;
+            text-shadow: 0 0 10px rgba(0, 255, 170, 0.5);
+        }
+        
+        .hand-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(0, 30, 60, 0.5);
+            border-radius: 8px;
+            border: 1px solid rgba(0, 255, 255, 0.2);
+        }
+        
+        .indicator-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 10px;
+            background: #ff0066;
+            box-shadow: 0 0 10px #ff0066;
+            animation: pulse 2s infinite;
+        }
+        
+        .indicator-dot.active {
+            background: #00ffaa;
+            box-shadow: 0 0 15px #00ffaa;
+            animation: pulseActive 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+        
+        @keyframes pulseActive {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .indicator-text {
+            font-size: 0.9rem;
+            color: #a0e7ff;
+        }
+        
+        /* 加载界面 */
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .loading-logo {
+            width: 120px;
+            height: 120px;
+            margin-bottom: 30px;
+            position: relative;
+        }
+        
+        .loading-logo::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: 4px solid transparent;
+            border-top: 4px solid #00ffff;
+            border-right: 4px solid #00ffaa;
+            border-radius: 50%;
+            animation: spin 2s linear infinite;
+        }
+        
+        .loading-logo::after {
+            content: 'Q';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: 'Orbitron', sans-serif;
+            font-size: 3rem;
+            font-weight: bold;
+            color: #00ffff;
+            text-shadow: 0 0 20px #00ffff;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            color: #00ffff;
+            text-align: center;
+            margin-bottom: 20px;
+            text-shadow: 0 0 10px #00ffff;
+        }
+        
+        .loading-progress {
+            width: 300px;
+            height: 6px;
+            background: rgba(0, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .loading-progress::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #0066ff, #00ffaa);
+            animation: loadingBar 2s ease-in-out infinite;
+        }
+        
+        @keyframes loadingBar {
+            0% { width: 0%; left: 0; }
+            50% { width: 100%; left: 0; }
+            100% { width: 0%; left: 100%; }
+        }
+        
+        /* 全屏按钮 */
+        .fullscreen-btn {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            width: 50px;
+            height: 50px;
+            background: rgba(0, 15, 30, 0.85);
+            backdrop-filter: blur(15px);
+            border-radius: 50%;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            color: #00ffff;
+            font-size: 1.5rem;
+            cursor: pointer;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+        
+        .fullscreen-btn:hover {
+            background: rgba(0, 255, 255, 0.1);
+            border-color: #00ffaa;
+            transform: scale(1.1);
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+        }
+        
+        /* 响应式调整 */
+        @media (max-width: 1200px) {
+            .main-controls {
+                width: 350px;
+            }
+            
+            .video-overlay {
+                width: 250px;
+                height: 188px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .main-controls {
+                top: 10px;
+                left: 10px;
+                width: calc(100% - 20px);
+                max-width: 400px;
+                padding: 15px;
+            }
+            
+            .video-overlay {
+                top: 10px;
+                right: 10px;
+                width: 150px;
+                height: 113px;
+            }
+            
+            .status-panel {
+                bottom: 10px;
+                right: 10px;
+                width: calc(100% - 80px);
+                max-width: 300px;
+            }
+            
+            .fullscreen-btn {
+                bottom: 10px;
+                left: 10px;
+            }
+        }
+        
+        /* 数据流效果 */
+        .data-stream {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+            overflow: hidden;
+        }
+        
+        .data-bit {
+            position: absolute;
+            width: 2px;
+            height: 20px;
+            background: linear-gradient(to bottom, transparent, #00ffff, transparent);
+            opacity: 0;
+            animation: dataFlow 8s linear infinite;
+        }
+        
+        @keyframes dataFlow {
+            0% {
+                transform: translateY(-100px) rotate(0deg);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(100vh) rotate(360deg);
+                opacity: 0;
+            }
+        }
+        
+        .shape-preset {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .shape-option {
+            height: 40px;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.3s;
+            background: rgba(0, 30, 60, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #a0e7ff;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        
+        .shape-option:hover {
+            background: rgba(0, 255, 255, 0.1);
+        }
+        
+        .shape-option.active {
+            background: rgba(0, 255, 255, 0.2);
+            border-color: #00ffff;
+            color: #00ffff;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <canvas id="threeCanvas"></canvas>
+        <div class="matrix-grid"></div>
+        <div class="scanlines"></div>
+        <div class="data-stream" id="dataStream"></div>
+        
+        <div class="video-overlay">
+            <video id="videoElement" autoplay playsinline></video>
+            <canvas id="canvasElement"></canvas>
+        </div>
+        
+        <div class="main-controls">
+            <div class="system-title">
+                <h1>量子手势交互系统</h1>
+                <div class="subtitle">3D粒子爱心 | 手势识别控制</div>
+            </div>
+            
+            <div class="control-section">
+                <div class="section-header">
+                    <div class="section-icon">H</div>
+                    <div class="section-title">手势控制</div>
+                </div>
+                
+                <div class="btn-group">
+                    <button id="startDetectionBtn" class="btn btn-primary">启动识别</button>
+                    <button id="stopDetectionBtn" class="btn btn-secondary" disabled>停止识别</button>
+                </div>
+                
+                <div class="slider-group">
+                    <div class="slider-label">
+                        <span>灵敏度</span>
+                        <span class="slider-value" id="sensitivityValue">50%</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-track" id="sensitivityTrack"></div>
+                        <input type="range" id="sensitivitySlider" min="10" max="90" value="50">
+                    </div>
+                </div>
+                
+                <div class="slider-group">
+                    <div class="slider-label">
+                        <span>粒子扩散度</span>
+                        <span class="slider-value" id="particleSpreadValue">0.5</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-track" id="particleSpreadTrack"></div>
+                        <input type="range" id="particleSpreadSlider" min="0" max="2" step="0.01" value="0.5">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="control-section">
+                <div class="section-header">
+                    <div class="section-icon">P</div>
+                    <div class="section-title">粒子系统</div>
+                </div>
+                
+                <div class="slider-group">
+                    <div class="slider-label">
+                        <span>粒子数量</span>
+                        <span class="slider-value" id="particleCountValue">10000</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-track" id="particleCountTrack"></div>
+                        <input type="range" id="particleCountSlider" min="1000" max="20000" step="100" value="10000">
+                    </div>
+                </div>
+                
+                <div class="slider-group">
+                    <div class="slider-label">
+                        <span>粒子大小</span>
+                        <span class="slider-value" id="particleSizeValue">0.05</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-track" id="particleSizeTrack"></div>
+                        <input type="range" id="particleSizeSlider" min="0.01" max="0.15" step="0.001" value="0.05">
+                    </div>
+                </div>
+                
+                <div class="slider-group">
+                    <div class="slider-label">
+                        <span>粒子速度</span>
+                        <span class="slider-value" id="particleSpeedValue">1.0</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-track" id="particleSpeedTrack"></div>
+                        <input type="range" id="particleSpeedSlider" min="0.1" max="3.0" step="0.05" value="1.0">
+                    </div>
+                </div>
+                
+                <div class="slider-group">
+                    <div class="slider-label">
+                        <span>形状强度</span>
+                        <span class="slider-value" id="shapeStrengthValue">1.2</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-track" id="shapeStrengthTrack"></div>
+                        <input type="range" id="shapeStrengthSlider" min="0.1" max="3.0" step="0.01" value="1.2">
+                    </div>
+                </div>
+                
+                <div class="shape-preset">
+                    <div class="shape-option active" data-shape="heart">爱心</div>
+                    <div class="shape-option" data-shape="sphere">球形</div>
+                    <div class="shape-option" data-shape="torus">圆环</div>
+                    <div class="shape-option" data-shape="tree">圣诞树</div>
+                </div>
+            </div>
+            
+            <div class="control-section">
+                <div class="section-header">
+                    <div class="section-icon">C</div>
+                    <div class="section-title">颜色系统</div>
+                </div>
+                
+                <div class="slider-group">
+                    <div class="slider-label">
+                        <span>色调</span>
+                        <span class="slider-value" id="hueValue">0.9</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-track" id="hueTrack"></div>
+                        <input type="range" id="hueSlider" min="0" max="1" step="0.01" value="0.9">
+                    </div>
+                </div>
+                
+                <div class="slider-group">
+                    <div class="slider-label">
+                        <span>饱和度</span>
+                        <span class="slider-value" id="saturationValue">0.8</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-track" id="saturationTrack"></div>
+                        <input type="range" id="saturationSlider" min="0.1" max="1.0" step="0.01" value="0.8">
+                    </div>
+                </div>
+                
+                <div class="slider-group">
+                    <div class="slider-label">
+                        <span>亮度</span>
+                        <span class="slider-value" id="brightnessValue">0.7</span>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-track" id="brightnessTrack"></div>
+                        <input type="range" id="brightnessSlider" min="0.1" max="1.0" step="0.01" value="0.7">
+                    </div>
+                </div>
+                
+                <div class="color-picker">
+                    <div class="color-option active" style="background: linear-gradient(135deg, #ff6b6b, #ff8e8e);" data-color="red"></div>
+                    <div class="color-option" style="background: linear-gradient(135deg, #00ffaa, #00ffff);" data-color="cyan"></div>
+                    <div class="color-option" style="background: linear-gradient(135deg, #ff00aa, #ff66ff);" data-color="pink"></div>
+                    <div class="color-option" style="background: linear-gradient(135deg, #ffaa00, #ffff00);" data-color="yellow"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="status-panel">
+            <div class="status-grid">
+                <div class="status-item">
+                    <span class="status-label">五指距离</span>
+                    <span class="status-value" id="handDistanceValue">0.00</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">旋转角度</span>
+                    <span class="status-value" id="rotationValue">0°</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">检测手指</span>
+                    <span class="status-value" id="fingersDetected">0</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">帧率</span>
+                    <span class="status-value" id="fpsValue">60</span>
+                </div>
+            </div>
+            
+            <div class="hand-indicator">
+                <div class="indicator-dot" id="handIndicator"></div>
+                <span class="indicator-text" id="handStatusText">系统待命</span>
+            </div>
+        </div>
+        
+        <button class="fullscreen-btn" id="fullscreenBtn">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+            </svg>
+        </button>
+    </div>
+    
+    <div class="loading" id="loading">
+        <div class="loading-logo"></div>
+        <div class="loading-text" id="loadingText">量子系统初始化中...</div>
+        <div class="loading-progress"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 获取DOM元素
+            const videoElement = document.getElementById('videoElement');
+            const canvasElement = document.getElementById('canvasElement');
+            const canvasCtx = canvasElement.getContext('2d');
+            const threeCanvas = document.getElementById('threeCanvas');
+            const loadingElement = document.getElementById('loading');
+            const loadingText = document.getElementById('loadingText');
+            const dataStream = document.getElementById('dataStream');
+            
+            // 状态显示元素
+            const handDistanceValue = document.getElementById('handDistanceValue');
+            const rotationValue = document.getElementById('rotationValue');
+            const fingersDetected = document.getElementById('fingersDetected');
+            const fpsValue = document.getElementById('fpsValue');
+            const handIndicator = document.getElementById('handIndicator');
+            const handStatusText = document.getElementById('handStatusText');
+            
+            // 控制元素
+            const startDetectionBtn = document.getElementById('startDetectionBtn');
+            const stopDetectionBtn = document.getElementById('stopDetectionBtn');
+            const fullscreenBtn = document.getElementById('fullscreenBtn');
+            
+            // 滑块元素
+            const sensitivitySlider = document.getElementById('sensitivitySlider');
+            const sensitivityValue = document.getElementById('sensitivityValue');
+            const sensitivityTrack = document.getElementById('sensitivityTrack');
+            
+            const particleSpreadSlider = document.getElementById('particleSpreadSlider');
+            const particleSpreadValue = document.getElementById('particleSpreadValue');
+            const particleSpreadTrack = document.getElementById('particleSpreadTrack');
+            
+            const particleCountSlider = document.getElementById('particleCountSlider');
+            const particleCountValue = document.getElementById('particleCountValue');
+            const particleCountTrack = document.getElementById('particleCountTrack');
+            
+            const particleSizeSlider = document.getElementById('particleSizeSlider');
+            const particleSizeValue = document.getElementById('particleSizeValue');
+            const particleSizeTrack = document.getElementById('particleSizeTrack');
+            
+            const particleSpeedSlider = document.getElementById('particleSpeedSlider');
+            const particleSpeedValue = document.getElementById('particleSpeedValue');
+            const particleSpeedTrack = document.getElementById('particleSpeedTrack');
+            
+            const shapeStrengthSlider = document.getElementById('shapeStrengthSlider');
+            const shapeStrengthValue = document.getElementById('shapeStrengthValue');
+            const shapeStrengthTrack = document.getElementById('shapeStrengthTrack');
+            
+            const hueSlider = document.getElementById('hueSlider');
+            const hueValue = document.getElementById('hueValue');
+            const hueTrack = document.getElementById('hueTrack');
+            
+            const saturationSlider = document.getElementById('saturationSlider');
+            const saturationValue = document.getElementById('saturationValue');
+            const saturationTrack = document.getElementById('saturationTrack');
+            
+            const brightnessSlider = document.getElementById('brightnessSlider');
+            const brightnessValue = document.getElementById('brightnessValue');
+            const brightnessTrack = document.getElementById('brightnessTrack');
+            
+            const colorOptions = document.querySelectorAll('.color-option');
+            const shapeOptions = document.querySelectorAll('.shape-option');
+            
+            // 初始化变量
+            let camera, scene, renderer, composer;
+            let particleSystem = null;
+            let targetScale = 1.0;
+            let currentScale = 1.0;
+            let handDetected = false;
+            let detectionActive = false;
+            let currentStream = null;
+            let isFullscreen = false;
+            
+            // 手部旋转控制
+            let targetRotationX = 0;
+            let targetRotationY = 0;
+            let currentRotationX = 0;
+            let currentRotationY = 0;
+            let lastHandAngle = 0;
+            
+            // 性能监控
+            let frameCount = 0;
+            let lastTime = performance.now();
+            let fps = 60;
+            
+            // 粒子系统参数
+            let particleParams = {
+                count: 10000,
+                baseSize: 0.05,
+                speed: 1.0,
+                hue: 0.9,
+                saturation: 0.8,
+                brightness: 0.7,
+                colorMode: 'red',
+                shapeMode: 'heart',
+                shapeStrength: 1.2,
+                particleSpread: 0.5,
+                originalPositions: null // 存储原始位置
+            };
+            
+            // TensorFlow Handpose 模型
+            let handposeModel = null;
+            let predictions = [];
+            
+            // 手指关键点索引
+            const fingerTips = {
+                thumb: 4,
+                index: 8,
+                middle: 12,
+                ring: 16,
+                pinky: 20
+            };
+            
+            // 创建数据流效果
+            function createDataStream() {
+                for (let i = 0; i < 50; i++) {
+                    const bit = document.createElement('div');
+                    bit.className = 'data-bit';
+                    bit.style.left = `${Math.random() * 100}%`;
+                    bit.style.animationDelay = `${Math.random() * 8}s`;
+                    dataStream.appendChild(bit);
+                }
+            }
+            
+            // 更新滑块轨道
+            function updateSliderTrack(slider, track) {
+                const value = slider.value;
+                const min = slider.min;
+                const max = slider.max;
+                const percent = ((value - min) / (max - min)) * 100;
+                track.style.width = `${percent}%`;
+            }
+            
+            // 初始化Three.js场景
+            async function initThreeJS() {
+                try {
+                    updateLoadingText("初始化量子渲染引擎...");
+                    
+                    // 创建场景
+                    scene = new THREE.Scene();
+                    scene.fog = new THREE.Fog(0x000000, 1, 30);
+                    
+                    // 创建相机
+                    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                    camera.position.z = 10;
+                    camera.position.y = 0;
+                    
+                    // 创建渲染器
+                    renderer = new THREE.WebGLRenderer({ 
+                        canvas: threeCanvas, 
+                        antialias: true,
+                        alpha: true,
+                        powerPreference: "high-performance"
+                    });
+                    renderer.setSize(window.innerWidth, window.innerHeight);
+                    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                    renderer.shadowMap.enabled = true;
+                    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                    
+                    // 创建后期效果处理器
+                    composer = new THREE.EffectComposer(renderer);
+                    const renderPass = new THREE.RenderPass(scene, camera);
+                    composer.addPass(renderPass);
+                    
+                    // 添加发光效果
+                    const bloomPass = new THREE.UnrealBloomPass(
+                        new THREE.Vector2(window.innerWidth, window.innerHeight),
+                        1.8, // 强度
+                        0.5, // 半径
+                        0.8 // 阈值
+                    );
+                    composer.addPass(bloomPass);
+                    
+                    // 添加光源
+                    const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+                    scene.add(ambientLight);
+                    
+                    const directionalLight = new THREE.DirectionalLight(0x00ffff, 1);
+                    directionalLight.position.set(10, 10, 10);
+                    directionalLight.castShadow = true;
+                    scene.add(directionalLight);
+                    
+                    const pointLight = new THREE.PointLight(0x00ffaa, 0.8, 20);
+                    pointLight.position.set(-5, 5, 5);
+                    scene.add(pointLight);
+                    
+                    // 创建粒子系统
+                    createParticles();
+                    
+                    updateLoadingText("量子渲染引擎就绪");
+                    
+                } catch (error) {
+                    console.error("Three.js初始化失败:", error);
+                    updateLoadingText("渲染引擎初始化失败: " + error.message);
+                }
+            }
+            
+            // 创建粒子系统 - 改进版
+            function createParticles() {
+                // 如果已有粒子系统，先移除
+                if (particleSystem) {
+                    scene.remove(particleSystem);
+                    if (particleSystem.geometry) particleSystem.geometry.dispose();
+                    if (particleSystem.material) particleSystem.material.dispose();
+                }
+                
+                const particlesGeometry = new THREE.BufferGeometry();
+                const positions = new Float32Array(particleParams.count * 3);
+                const colors = new Float32Array(particleParams.count * 3);
+                const sizes = new Float32Array(particleParams.count);
+                
+                // 保存原始位置
+                particleParams.originalPositions = new Float32Array(particleParams.count * 3);
+                
+                // 根据颜色模式设置基础颜色
+                let baseColor = new THREE.Color();
+                switch(particleParams.colorMode) {
+                    case 'red':
+                        baseColor.setHSL(0.9, 0.8, 0.7);
+                        break;
+                    case 'cyan':
+                        baseColor.setHSL(0.5, 0.8, 0.7);
+                        break;
+                    case 'pink':
+                        baseColor.setHSL(0.9, 0.7, 0.8);
+                        break;
+                    case 'yellow':
+                        baseColor.setHSL(0.15, 0.8, 0.7);
+                        break;
+                    default:
+                        baseColor.setHSL(particleParams.hue, particleParams.saturation, particleParams.brightness);
+                }
+                
+                // 根据形状模式创建粒子分布
+                for (let i = 0; i < particleParams.count; i++) {
+                    let x, y, z;
+                    
+                    // 根据形状模式选择不同的粒子分布
+                    switch(particleParams.shapeMode) {
+                        case 'heart':
+                            // 改进的爱心粒子分布 - 更大的爱心
+                            const scale = 0.08 * particleParams.shapeStrength;
+                            
+                            if (i % 3 === 0) {
+                                // 方法1: 使用爱心参数方程 (边界)
+                                const t = (i / particleParams.count) * Math.PI * 2;
+                                x = 16 * Math.pow(Math.sin(t), 3);
+                                y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+                                z = (Math.random() - 0.5) * 0.8;
+                            } 
+                            else if (i % 3 === 1) {
+                                // 方法2: 在爱心内部填充随机粒子
+                                const angle = Math.random() * Math.PI * 2;
+                                const radius = Math.random() * 0.9;
+                                
+                                const t = angle;
+                                const baseX = 16 * Math.pow(Math.sin(t), 3);
+                                const baseY = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+                                
+                                x = baseX * radius;
+                                y = baseY * radius;
+                                z = (Math.random() - 0.5) * 0.6;
+                            }
+                            else {
+                                // 方法3: 完全随机填充爱心
+                                const angle = Math.random() * Math.PI * 2;
+                                const radius = Math.sqrt(Math.random()) * 0.9;
+                                
+                                const t = angle;
+                                const baseX = 16 * Math.pow(Math.sin(t), 3);
+                                const baseY = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+                                
+                                x = baseX * radius;
+                                y = baseY * radius;
+                                z = (Math.random() - 0.5) * 0.7;
+                            }
+                            
+                            // 应用缩放并居中
+                            x = x * scale * 1.5; // 增加爱心大小
+                            y = y * scale * 1.2;
+                            z = z * scale * 0.8;
+                            
+                            // 将爱心上移一点使其居中
+                            y += 0.8 * scale;
+                            break;
+                            
+                        case 'sphere':
+                            // 球形粒子分布 - 填充整个球体
+                            const radius = 2.0 * particleParams.shapeStrength;
+                            const theta = Math.random() * Math.PI * 2;
+                            const phi = Math.acos(2 * Math.random() - 1);
+                            const r = Math.cbrt(Math.random()) * radius; // 立方根分布使球体内部更均匀
+                            
+                            x = r * Math.sin(phi) * Math.cos(theta);
+                            y = r * Math.sin(phi) * Math.sin(theta);
+                            z = r * Math.cos(phi);
+                            break;
+                            
+                        case 'torus':
+                            // 圆环形粒子分布
+                            const torusRadius = 2.5 * particleParams.shapeStrength;
+                            const tubeRadius = 0.7 * particleParams.shapeStrength;
+                            const u = Math.random() * Math.PI * 2;
+                            const v = Math.random() * Math.PI * 2;
+                            
+                            x = (torusRadius + tubeRadius * Math.cos(v)) * Math.cos(u);
+                            y = (torusRadius + tubeRadius * Math.cos(v)) * Math.sin(u);
+                            z = tubeRadius * Math.sin(v);
+                            break;
+                            
+                        case 'tree':
+                            // 圣诞树形状 - 多层圆锥体结构
+                            const treeHeight = 4.0 * particleParams.shapeStrength;
+                            const treeBase = 1.5 * particleParams.shapeStrength;
+                            
+                            // 决定粒子属于树的哪个部分
+                            const partType = Math.random();
+                            
+                            if (partType < 0.02) {
+                                // 树顶星星 (2%)
+                                const starSize = 0.3;
+                                x = (Math.random() - 0.5) * starSize;
+                                y = treeHeight / 2 + 0.4;
+                                z = (Math.random() - 0.5) * starSize;
+                            } 
+                            else if (partType < 0.05) {
+                                // 树干 (3%)
+                                const trunkHeight = treeHeight * 0.2;
+                                const trunkRadius = 0.2;
+                                x = (Math.random() - 0.5) * trunkRadius * 2;
+                                y = -treeHeight / 2 + trunkHeight * Math.random();
+                                z = (Math.random() - 0.5) * trunkRadius * 2;
+                            }
+                            else if (partType < 0.1) {
+                                // 礼物盒 (5%)
+                                const giftY = -treeHeight / 2 - 0.3;
+                                const giftSize = 0.4;
+                                x = (Math.random() - 0.5) * giftSize * 2;
+                                y = giftY;
+                                z = (Math.random() - 0.5) * giftSize * 2;
+                            }
+                            else if (partType < 0.15) {
+                                // 彩带 (5%)
+                                const ribbonHeight = (Math.random() - 0.5) * treeHeight * 0.8;
+                                const ribbonAngle = Math.random() * Math.PI * 2;
+                                const ribbonRadius = treeBase * (1 - (ribbonHeight + treeHeight/2) / treeHeight) * 0.8;
+                                x = Math.cos(ribbonAngle) * ribbonRadius;
+                                y = ribbonHeight;
+                                z = Math.sin(ribbonAngle) * ribbonRadius;
+                            }
+                            else if (partType < 0.25) {
+                                // 装饰球 (10%)
+                                const ornamentHeight = (Math.random() - 0.5) * treeHeight * 0.9;
+                                const ornamentAngle = Math.random() * Math.PI * 2;
+                                const ornamentRadius = treeBase * (1 - (ornamentHeight + treeHeight/2) / treeHeight) * 0.7;
+                                x = Math.cos(ornamentAngle) * ornamentRadius;
+                                y = ornamentHeight;
+                                z = Math.sin(ornamentAngle) * ornamentRadius;
+                            }
+                            else {
+                                // 树叶 (75%)
+                                const leafHeight = (Math.random() - 0.5) * treeHeight;
+                                const leafAngle = Math.random() * Math.PI * 2;
+                                const leafRadius = treeBase * (1 - (leafHeight + treeHeight/2) / treeHeight);
+                                const leafDensity = Math.random();
+                                
+                                x = Math.cos(leafAngle) * leafRadius * leafDensity;
+                                y = leafHeight;
+                                z = Math.sin(leafAngle) * leafRadius * leafDensity;
+                            }
+                            break;
+                    }
+                    
+                    positions[i * 3] = x;
+                    positions[i * 3 + 1] = y;
+                    positions[i * 3 + 2] = z;
+                    
+                    // 保存原始位置
+                    particleParams.originalPositions[i * 3] = x;
+                    particleParams.originalPositions[i * 3 + 1] = y;
+                    particleParams.originalPositions[i * 3 + 2] = z;
+                    
+                    // 设置粒子颜色 - 根据形状模式调整颜色
+                    let hue, saturation, brightness;
+                    
+                    switch(particleParams.shapeMode) {
+                        case 'tree':
+                            // 圣诞树颜色方案
+                            if (positions[i * 3 + 1] > 2.0) {
+                                // 树顶星星 - 金色
+                                hue = 0.15;
+                                saturation = 0.9;
+                                brightness = 0.9;
+                            } 
+                            else if (positions[i * 3 + 1] < -2.0) {
+                                // 礼物盒 - 随机鲜艳颜色
+                                hue = Math.random();
+                                saturation = 0.8 + Math.random() * 0.2;
+                                brightness = 0.7 + Math.random() * 0.3;
+                            }
+                            else if (Math.abs(positions[i * 3 + 1] + 2.0) < 0.3) {
+                                // 树干 - 棕色
+                                hue = 0.07;
+                                saturation = 0.6 + Math.random() * 0.2;
+                                brightness = 0.4 + Math.random() * 0.2;
+                            }
+                            else if (Math.random() < 0.1) {
+                                // 装饰球 - 随机鲜艳颜色
+                                hue = Math.random();
+                                saturation = 0.8 + Math.random() * 0.2;
+                                brightness = 0.8 + Math.random() * 0.2;
+                            }
+                            else if (Math.random() < 0.05) {
+                                // 彩带 - 红色或金色
+                                hue = Math.random() < 0.5 ? 0.0 : 0.15;
+                                saturation = 0.9;
+                                brightness = 0.8;
+                            }
+                            else {
+                                // 树叶 - 绿色渐变
+                                const heightRatio = (positions[i * 3 + 1] + 2.0) / 4.0;
+                                hue = 0.3 + heightRatio * 0.1; // 从深绿到浅绿
+                                saturation = 0.6 + Math.random() * 0.3;
+                                brightness = 0.4 + heightRatio * 0.3;
+                            }
+                            break;
+                            
+                        case 'heart':
+                            // 爱心颜色 - 红色渐变
+                            const distanceFromCenter = Math.sqrt(x*x + y*y + z*z);
+                            hue = particleParams.hue + distanceFromCenter * 0.1;
+                            saturation = particleParams.saturation * (0.8 + Math.random() * 0.4);
+                            brightness = particleParams.brightness * (0.7 + distanceFromCenter * 0.5);
+                            break;
+                            
+                        default:
+                            hue = particleParams.hue + (Math.random() - 0.5) * 0.1;
+                            saturation = particleParams.saturation * (0.7 + Math.random() * 0.3);
+                            brightness = particleParams.brightness * (0.6 + Math.random() * 0.4);
+                    }
+                    
+                    hue = (hue + 1) % 1;
+                    
+                    const color = new THREE.Color().setHSL(
+                        hue,
+                        saturation,
+                        brightness
+                    );
+                    
+                    colors[i * 3] = color.r;
+                    colors[i * 3 + 1] = color.g;
+                    colors[i * 3 + 2] = color.b;
+                    
+                    // 设置粒子大小 - 根据形状和位置调整
+                    switch(particleParams.shapeMode) {
+                        case 'tree':
+                            if (positions[i * 3 + 1] > 2.0) {
+                                // 星星粒子稍大
+                                sizes[i] = Math.random() * 0.08 + 0.05;
+                            } else if (Math.random() < 0.1) {
+                                // 装饰球稍大
+                                sizes[i] = Math.random() * 0.06 + 0.04;
+                            } else {
+                                sizes[i] = Math.random() * 0.05 + 0.03;
+                            }
+                            break;
+                        case 'heart':
+                            // 爱心边缘粒子稍小，中心稍大
+                            const dist = Math.sqrt(x*x + y*y + z*z);
+                            sizes[i] = (0.8 - dist) * 0.15 + 0.02;
+                            sizes[i] = Math.max(0.01, Math.min(0.06, sizes[i]));
+                            break;
+                        default:
+                            sizes[i] = Math.random() * 0.04 + 0.02;
+                    }
+                }
+                
+                particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                particlesGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+                
+                // 创建粒子材质
+                const particleMaterial = new THREE.PointsMaterial({
+                    size: particleParams.baseSize,
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 0.95,
+                    blending: THREE.AdditiveBlending,
+                    sizeAttenuation: true,
+                    depthWrite: false
+                });
+                
+                // 创建粒子系统
+                particleSystem = new THREE.Points(particlesGeometry, particleMaterial);
+                
+                // 将粒子系统居中
+                particleSystem.position.set(0, 0, 0);
+                
+                scene.add(particleSystem);
+                
+                // 更新UI显示
+                particleCountValue.textContent = particleParams.count.toLocaleString();
+                particleSizeValue.textContent = particleParams.baseSize.toFixed(2);
+            }
+            
+            // Three.js动画循环
+            function animate() {
+                requestAnimationFrame(animate);
+                
+                // 计算FPS
+                frameCount++;
+                const currentTime = performance.now();
+                if (currentTime >= lastTime + 1000) {
+                    fps = Math.round((frameCount * 1000) / (currentTime - lastTime));
+                    fpsValue.textContent = fps;
+                    frameCount = 0;
+                    lastTime = currentTime;
+                }
+                
+                // 平滑缩放过渡
+                currentScale += (targetScale - currentScale) * 0.05;
+                
+                // 平滑旋转过渡
+                currentRotationX += (targetRotationX - currentRotationX) * 0.1;
+                currentRotationY += (targetRotationY - currentRotationY) * 0.1;
+                
+                // 更新粒子系统
+                if (particleSystem) {
+                    // 应用缩放
+                    particleSystem.scale.set(currentScale, currentScale, currentScale);
+                    
+                    // 应用旋转
+                    particleSystem.rotation.y = currentRotationY;
+                    particleSystem.rotation.x = currentRotationX;
+                    
+                    // 更新粒子大小
+                    particleSystem.material.size = particleParams.baseSize / Math.max(0.5, currentScale);
+                    
+                    // 更新粒子动画
+                    updateParticleAnimation();
+                    
+                    // 添加轻微的脉动效果
+                    const pulse = Math.sin(Date.now() * 0.001 * particleParams.speed) * 0.02 + 1;
+                    particleSystem.scale.multiplyScalar(pulse);
+                }
+                
+                // 更新后期效果
+                if (composer) {
+                    composer.render();
+                }
+            }
+            
+            // 更新粒子动画 - 改进版，支持扩散效果
+            function updateParticleAnimation() {
+                if (!particleSystem || !particleParams.originalPositions) return;
+                
+                const positions = particleSystem.geometry.attributes.position.array;
+                const colors = particleSystem.geometry.attributes.color.array;
+                const time = Date.now() * 0.001 * particleParams.speed;
+                const spread = particleParams.particleSpread;
+                
+                // 为粒子添加动态效果，但保持原始形状
+                for (let i = 0; i < positions.length; i += 3) {
+                    const particleIndex = i / 3;
+                    
+                    // 获取原始位置
+                    const originalX = particleParams.originalPositions[i];
+                    const originalY = particleParams.originalPositions[i + 1];
+                    const originalZ = particleParams.originalPositions[i + 2];
+                    
+                    // 计算波动效果 - 根据形状调整
+                    let wave1, wave2, wave3;
+                    
+                    switch(particleParams.shapeMode) {
+                        case 'heart':
+                            // 爱心脉动效果 + 扩散
+                            wave1 = Math.sin(time * 0.8 + particleIndex * 0.05) * 0.005 * (1 + spread);
+                            wave2 = Math.cos(time * 0.5 + particleIndex * 0.03) * 0.006 * (1 + spread);
+                            wave3 = Math.sin(time * 0.3 + particleIndex * 0.02) * 0.004 * (1 + spread);
+                            
+                            // 添加随机扩散
+                            if (spread > 0) {
+                                wave1 += (Math.random() - 0.5) * 0.1 * spread;
+                                wave2 += (Math.random() - 0.5) * 0.1 * spread;
+                                wave3 += (Math.random() - 0.5) * 0.05 * spread;
+                            }
+                            break;
+                            
+                        case 'tree':
+                            // 圣诞树粒子有轻微摆动效果
+                            if (originalY > 2.0) {
+                                // 星星闪烁
+                                wave1 = Math.sin(time * 2 + particleIndex) * 0.003 * (1 + spread);
+                                wave2 = Math.cos(time * 1.5 + particleIndex) * 0.003 * (1 + spread);
+                                wave3 = Math.sin(time * 1 + particleIndex) * 0.003 * (1 + spread);
+                            } else {
+                                // 树叶轻微摆动
+                                wave1 = Math.sin(time * 0.3 + originalY * 0.5 + particleIndex * 0.01) * 0.002 * (1 + spread);
+                                wave2 = Math.cos(time * 0.2 + originalY * 0.3 + particleIndex * 0.01) * 0.002 * (1 + spread);
+                                wave3 = Math.sin(time * 0.1 + originalY * 0.2 + particleIndex * 0.01) * 0.002 * (1 + spread);
+                            }
+                            
+                            // 添加随机扩散
+                            if (spread > 0) {
+                                wave1 += (Math.random() - 0.5) * 0.08 * spread;
+                                wave2 += (Math.random() - 0.5) * 0.08 * spread;
+                                wave3 += (Math.random() - 0.5) * 0.04 * spread;
+                            }
+                            break;
+                            
+                        default:
+                            wave1 = Math.sin(time * 0.5 + particleIndex * 0.1) * 0.008 * (1 + spread);
+                            wave2 = Math.cos(time * 0.3 + particleIndex * 0.05) * 0.007 * (1 + spread);
+                            wave3 = Math.sin(time * 0.2 + particleIndex * 0.02) * 0.005 * (1 + spread);
+                            
+                            // 添加随机扩散
+                            if (spread > 0) {
+                                wave1 += (Math.random() - 0.5) * 0.1 * spread;
+                                wave2 += (Math.random() - 0.5) * 0.1 * spread;
+                                wave3 += (Math.random() - 0.5) * 0.06 * spread;
+                            }
+                    }
+                    
+                    // 应用波动效果到原始位置
+                    positions[i] = originalX + wave1;
+                    positions[i + 1] = originalY + wave2;
+                    positions[i + 2] = originalZ + wave3;
+                    
+                    // 偶尔更新颜色以产生闪烁效果
+                    if (Math.random() < 0.003) {
+                        let hue, saturation, brightness;
+                        
+                        switch(particleParams.shapeMode) {
+                            case 'tree':
+                                // 圣诞树装饰闪烁
+                                if (Math.random() < 0.3) {
+                                    hue = Math.random();
+                                    saturation = 0.9;
+                                    brightness = 0.9;
+                                }
+                                break;
+                            case 'heart':
+                                // 爱心颜色闪烁
+                                hue = particleParams.hue + (Math.random() - 0.5) * 0.2;
+                                saturation = particleParams.saturation;
+                                brightness = particleParams.brightness * (0.8 + Math.random() * 0.4);
+                                break;
+                            default:
+                                hue = particleParams.hue + (Math.random() - 0.5) * 0.2;
+                                saturation = particleParams.saturation;
+                                brightness = particleParams.brightness * (0.8 + Math.random() * 0.2);
+                        }
+                        
+                        hue = (hue + 1) % 1;
+                        
+                        const color = new THREE.Color().setHSL(
+                            hue,
+                            saturation,
+                            brightness
+                        );
+                        
+                        colors[i] = color.r;
+                        colors[i + 1] = color.g;
+                        colors[i + 2] = color.b;
+                    }
+                }
+                
+                particleSystem.geometry.attributes.position.needsUpdate = true;
+                particleSystem.geometry.attributes.color.needsUpdate = true;
+            }
+            
+            // 窗口大小变化时调整Three.js渲染器
+            function onWindowResize() {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                composer.setSize(window.innerWidth, window.innerHeight);
+            }
+            
+            // 初始化TensorFlow.js Handpose模型
+            async function initHandposeModel() {
+                try {
+                    updateLoadingText("加载神经网络模型...");
+                    
+                    // 检查TensorFlow.js是否可用
+                    if (typeof tf === 'undefined') {
+                        throw new Error('TensorFlow.js库加载失败');
+                    }
+                    
+                    // 检查Handpose模型是否可用
+                    if (typeof handpose === 'undefined') {
+                        throw new Error('Handpose模型库加载失败');
+                    }
+                    
+                    // 加载Handpose模型
+                    updateLoadingText("下载量子识别模型...");
+                    handposeModel = await handpose.load();
+                    
+                    console.log("Handpose模型加载成功");
+                    updateLoadingText("神经网络就绪");
+                    
+                    // 隐藏加载界面
+                    setTimeout(() => {
+                        loadingElement.style.display = 'none';
+                        startAnimation();
+                    }, 500);
+                    
+                    // 启用开始检测按钮
+                    startDetectionBtn.disabled = false;
+                    startDetectionBtn.textContent = "启动识别";
+                    
+                    handStatusText.textContent = "系统待命";
+                    
+                } catch (error) {
+                    console.error("Handpose模型加载失败:", error);
+                    updateLoadingText("模型加载失败，启用备用方案");
+                    
+                    // 显示备用信息
+                    setTimeout(() => {
+                        loadingElement.style.display = 'none';
+                        startAnimation();
+                        handStatusText.textContent = "备用模式：鼠标控制";
+                        startDetectionBtn.style.display = 'none';
+                        setupMouseControl();
+                    }, 1000);
+                }
+            }
+            
+            // 开始动画循环
+            function startAnimation() {
+                animate();
+            }
+            
+            // 设置鼠标控制（备用方案）
+            function setupMouseControl() {
+                let mouseX = 0.5;
+                let mouseY = 0.5;
+                let isMouseDown = false;
+                
+                document.addEventListener('mousemove', (event) => {
+                    mouseX = event.clientX / window.innerWidth;
+                    mouseY = event.clientY / window.innerHeight;
+                    
+                    if (isMouseDown) {
+                        // 鼠标按下时控制缩放和旋转
+                        const centerX = mouseX - 0.5;
+                        const centerY = mouseY - 0.5;
+                        const distanceFromCenter = Math.sqrt(centerX * centerX + centerY * centerY);
+                        
+                        // 控制缩放
+                        targetScale = 0.5 + distanceFromCenter * 3;
+                        scaleValue.textContent = targetScale.toFixed(2);
+                        
+                        // 控制旋转
+                        targetRotationY = centerX * Math.PI * 2;
+                        targetRotationX = centerY * Math.PI;
+                        
+                        // 更新旋转显示
+                        rotationValue.textContent = `${Math.round(targetRotationY * 180 / Math.PI)}°`;
+                        
+                        // 模拟手指距离
+                        const simulatedDistance = 20 + distanceFromCenter * 150;
+                        handDistanceValue.textContent = simulatedDistance.toFixed(2);
+                        fingersDetected.textContent = Math.floor(distanceFromCenter * 5);
+                        
+                        // 更新手部检测状态
+                        handDetected = true;
+                        handIndicator.classList.add('active');
+                        handStatusText.textContent = '鼠标控制模式';
+                    }
+                });
+                
+                document.addEventListener('mousedown', () => {
+                    isMouseDown = true;
+                });
+                
+                document.addEventListener('mouseup', () => {
+                    isMouseDown = false;
+                    targetScale = 1.0;
+                    handDetected = false;
+                    handIndicator.classList.remove('active');
+                    handStatusText.textContent = '鼠标已释放';
+                });
+                
+                document.addEventListener('mouseleave', () => {
+                    isMouseDown = false;
+                    handDetected = false;
+                    handIndicator.classList.remove('active');
+                    handStatusText.textContent = '鼠标离开';
+                    targetScale = 1.0;
+                });
+            }
+            
+            // 初始化摄像头
+            async function initCamera() {
+                try {
+                    updateLoadingText("初始化视觉传感器...");
+                    
+                    // 尝试获取默认摄像头
+                    const constraints = {
+                        video: { 
+                            width: { ideal: 640 }, 
+                            height: { ideal: 480 },
+                            facingMode: "user"
+                        }
+                    };
+                    
+                    // 检查浏览器是否支持媒体设备
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                        throw new Error("浏览器不支持摄像头访问");
+                    }
+                    
+                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    currentStream = stream;
+                    videoElement.srcObject = stream;
+                    
+                    // 等待视频加载
+                    await new Promise((resolve) => {
+                        videoElement.onloadedmetadata = () => {
+                            // 设置canvas尺寸与视频一致
+                            canvasElement.width = videoElement.videoWidth;
+                            canvasElement.height = videoElement.videoHeight;
+                            console.log("摄像头初始化成功");
+                            resolve();
+                        };
+                    });
+                    
+                } catch (error) {
+                    console.error("无法访问摄像头:", error);
+                    updateLoadingText("视觉传感器初始化失败，使用备用模式");
+                    
+                    // 隐藏视频叠加层
+                    document.querySelector('.video-overlay').style.display = 'none';
+                    
+                    // 启用备用控制模式
+                    setTimeout(() => {
+                        handStatusText.textContent = "摄像头不可用，启用鼠标控制";
+                        setupMouseControl();
+                    }, 1000);
+                }
+            }
+            
+            // 开始手势检测
+            async function startHandDetection() {
+                if (!handposeModel || detectionActive) return;
+                
+                detectionActive = true;
+                startDetectionBtn.disabled = true;
+                startDetectionBtn.textContent = "识别中...";
+                stopDetectionBtn.disabled = false;
+                
+                handStatusText.textContent = "扫描手部特征...";
+                handIndicator.classList.remove('active');
+                
+                console.log("开始手势检测");
+                
+                // 开始检测循环
+                detectHands();
+            }
+            
+            // 停止手势检测
+            function stopHandDetection() {
+                detectionActive = false;
+                startDetectionBtn.disabled = false;
+                startDetectionBtn.textContent = "启动识别";
+                stopDetectionBtn.disabled = true;
+                
+                handStatusText.textContent = "系统待命";
+                handIndicator.classList.remove('active');
+                
+                // 清除画布
+                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+                
+                console.log("停止手势检测");
+            }
+            
+            // 检测手势 - 增加手部旋转检测
+            async function detectHands() {
+                if (!detectionActive || !handposeModel) return;
+                
+                try {
+                    // 检测手部
+                    predictions = await handposeModel.estimateHands(videoElement);
+                    
+                    // 清除画布
+                    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+                    
+                    // 绘制视频帧
+                    canvasCtx.save();
+                    canvasCtx.scale(-1, 1);
+                    canvasCtx.translate(-canvasElement.width, 0);
+                    canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+                    canvasCtx.restore();
+                    
+                    // 处理检测结果
+                    if (predictions.length > 0) {
+                        handDetected = true;
+                        handIndicator.classList.add('active');
+                        handStatusText.textContent = '手势识别中';
+                        
+                        // 绘制手部关键点
+                        drawHand(predictions[0]);
+                        
+                        // 计算五指距离
+                        const distance = calculateFingerDistance(predictions[0]);
+                        
+                        // 根据距离调整粒子缩放
+                        updateParticleScale(distance);
+                        
+                        // 检测手部旋转
+                        const rotation = calculateHandRotation(predictions[0]);
+                        updateModelRotation(rotation);
+                        
+                    } else {
+                        handDetected = false;
+                        handIndicator.classList.remove('active');
+                        handStatusText.textContent = '未检测到手部';
+                        
+                        // 如果没有检测到手，缓慢恢复到默认缩放
+                        targetScale += (1.0 - targetScale) * 0.05;
+                        
+                        // 缓慢恢复到默认旋转
+                        targetRotationX += (0 - targetRotationX) * 0.05;
+                        targetRotationY += (0 - targetRotationY) * 0.05;
+                    }
+                    
+                } catch (error) {
+                    console.error("手势检测错误:", error);
+                }
+                
+                // 继续下一帧检测
+                if (detectionActive) {
+                    requestAnimationFrame(detectHands);
+                }
+            }
+            
+            // 绘制手部关键点
+            function drawHand(prediction) {
+                const keypoints = prediction.landmarks;
+                
+                canvasCtx.save();
+                canvasCtx.scale(-1, 1);
+                canvasCtx.translate(-canvasElement.width, 0);
+                
+                // 绘制关键点
+                for (let i = 0; i < keypoints.length; i++) {
+                    const [x, y] = keypoints[i];
+                    
+                    // 创建渐变颜色
+                    const gradient = canvasCtx.createRadialGradient(x, y, 0, x, y, 8);
+                    gradient.addColorStop(0, '#ffffff');
+                    gradient.addColorStop(0.5, '#00ffff');
+                    gradient.addColorStop(1, 'transparent');
+                    
+                    canvasCtx.beginPath();
+                    canvasCtx.arc(x, y, 8, 0, 2 * Math.PI);
+                    canvasCtx.fillStyle = gradient;
+                    canvasCtx.fill();
+                    
+                    // 绘制内部点
+                    canvasCtx.beginPath();
+                    canvasCtx.arc(x, y, 2, 0, 2 * Math.PI);
+                    canvasCtx.fillStyle = '#00ffaa';
+                    canvasCtx.fill();
+                }
+                
+                // 绘制关键点连线
+                const connections = [
+                    [0, 1], [1, 2], [2, 3], [3, 4], // 拇指
+                    [0, 5], [5, 6], [6, 7], [7, 8], // 食指
+                    [0, 9], [9, 10], [10, 11], [11, 12], // 中指
+                    [0, 13], [13, 14], [14, 15], [15, 16], // 无名指
+                    [0, 17], [17, 18], [18, 19], [19, 20], // 小指
+                    [5, 9], [9, 13], [13, 17] // 手掌
+                ];
+                
+                canvasCtx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
+                canvasCtx.lineWidth = 2;
+                canvasCtx.lineCap = 'round';
+                canvasCtx.lineJoin = 'round';
+                
+                for (const [start, end] of connections) {
+                    const [x1, y1] = keypoints[start];
+                    const [x2, y2] = keypoints[end];
+                    
+                    canvasCtx.beginPath();
+                    canvasCtx.moveTo(x1, y1);
+                    canvasCtx.lineTo(x2, y2);
+                    canvasCtx.stroke();
+                }
+                
+                canvasCtx.restore();
+            }
+            
+            // 计算五指距离
+            function calculateFingerDistance(prediction) {
+                const keypoints = prediction.landmarks;
+                
+                // 获取五个指尖的坐标
+                const thumbTip = keypoints[fingerTips.thumb];
+                const indexTip = keypoints[fingerTips.index];
+                const middleTip = keypoints[fingerTips.middle];
+                const ringTip = keypoints[fingerTips.ring];
+                const pinkyTip = keypoints[fingerTips.pinky];
+                
+                const fingertips = [thumbTip, indexTip, middleTip, ringTip, pinkyTip];
+                
+                // 计算五个指尖之间的平均距离
+                let totalDistance = 0;
+                let pairCount = 0;
+                
+                for (let i = 0; i < fingertips.length; i++) {
+                    for (let j = i + 1; j < fingertips.length; j++) {
+                        const [x1, y1] = fingertips[i];
+                        const [x2, y2] = fingertips[j];
+                        
+                        const dx = x1 - x2;
+                        const dy = y1 - y2;
+                        totalDistance += Math.sqrt(dx * dx + dy * dy);
+                        pairCount++;
+                    }
+                }
+                
+                const avgDistance = totalDistance / pairCount;
+                
+                // 更新UI显示
+                handDistanceValue.textContent = avgDistance.toFixed(2);
+                fingersDetected.textContent = fingertips.length;
+                
+                return avgDistance;
+            }
+            
+            // 计算手部旋转角度
+            function calculateHandRotation(prediction) {
+                const keypoints = prediction.landmarks;
+                
+                // 使用手腕(0)和手掌中心(9)的连线计算手部角度
+                const wrist = keypoints[0];
+                const palmCenter = keypoints[9];
+                
+                // 计算手腕到手掌中心的向量
+                const dx = palmCenter[0] - wrist[0];
+                const dy = palmCenter[1] - wrist[1];
+                
+                // 计算角度（弧度）
+                let angle = Math.atan2(dy, dx);
+                
+                // 将角度标准化到0-2π
+                if (angle < 0) angle += Math.PI * 2;
+                
+                // 计算角度变化量
+                const angleDelta = angle - lastHandAngle;
+                lastHandAngle = angle;
+                
+                // 返回旋转信息
+                return {
+                    angle: angle,
+                    delta: angleDelta,
+                    wrist: wrist,
+                    palmCenter: palmCenter
+                };
+            }
+            
+            // 根据手部旋转更新模型旋转
+            function updateModelRotation(rotationInfo) {
+                // 手部旋转控制Y轴旋转（水平旋转）
+                // 手掌向上时角度为0，手掌向右时角度为π/2，以此类推
+                
+                // 映射手部角度到模型旋转
+                // 手掌向上（手背朝向摄像头） -> 模型正面
+                // 手掌向右 -> 模型向右旋转90度
+                // 手掌向下 -> 模型背面
+                // 手掌向左 -> 模型向左旋转90度
+                
+                // 计算目标旋转角度
+                const targetYRotation = rotationInfo.angle;
+                
+                // 平滑过渡到目标旋转
+                targetRotationY += (targetYRotation - targetRotationY) * 0.1;
+                
+                // 也可以根据手部移动速度调整旋转速度
+                const rotationSpeed = Math.min(Math.abs(rotationInfo.delta) * 10, 0.5);
+                targetRotationY += rotationInfo.delta * rotationSpeed;
+                
+                // 更新UI显示
+                const degrees = Math.round(targetRotationY * 180 / Math.PI);
+                rotationValue.textContent = `${degrees}°`;
+            }
+            
+            // 根据手指距离更新粒子缩放
+            function updateParticleScale(distance) {
+                // 将距离映射到缩放比例
+                // 距离越大（五指张开），缩放越大
+                // 距离越小（五指并拢），缩放越小
+                
+                const sensitivity = sensitivitySlider.value / 100;
+                const minDistance = 15 * sensitivity;
+                const maxDistance = 120 * sensitivity;
+                
+                let normalizedDistance = (distance - minDistance) / (maxDistance - minDistance);
+                normalizedDistance = Math.max(0, Math.min(1, normalizedDistance));
+                
+                // 反转：距离越大，缩放越大
+                targetScale = 0.8 + normalizedDistance * 2.2; // 缩放范围：0.8-3.0
+                
+                // 更新UI显示
+                // scaleValue.textContent = targetScale.toFixed(2);
+            }
+            
+            // 更新加载文本
+            function updateLoadingText(text) {
+                loadingText.textContent = text;
+                console.log(text);
+            }
+            
+            // 切换全屏模式
+            function toggleFullscreen() {
+                if (!isFullscreen) {
+                    const elem = document.documentElement;
+                    if (elem.requestFullscreen) {
+                        elem.requestFullscreen();
+                    } else if (elem.mozRequestFullScreen) { /* Firefox */
+                        elem.mozRequestFullScreen();
+                    } else if (elem.webkitRequestFullscreen) { /* Chrome, Safari & Opera */
+                        elem.webkitRequestFullscreen();
+                    } else if (elem.msRequestFullscreen) { /* IE/Edge */
+                        elem.msRequestFullscreen();
+                    }
+                    isFullscreen = true;
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    } else if (document.mozCancelFullScreen) { /* Firefox */
+                        document.mozCancelFullScreen();
+                    } else if (document.webkitExitFullscreen) { /* Chrome, Safari & Opera */
+                        document.webkitExitFullscreen();
+                    } else if (document.msExitFullscreen) { /* IE/Edge */
+                        document.msExitFullscreen();
+                    }
+                    isFullscreen = false;
+                }
+            }
+            
+            // 初始化滑块事件
+            function initSliderEvents() {
+                // 灵敏度滑块
+                sensitivitySlider.addEventListener('input', function() {
+                    const value = this.value;
+                    sensitivityValue.textContent = value + '%';
+                    updateSliderTrack(this, sensitivityTrack);
+                });
+                
+                // 粒子扩散度滑块
+                particleSpreadSlider.addEventListener('input', function() {
+                    particleParams.particleSpread = parseFloat(this.value);
+                    particleSpreadValue.textContent = particleParams.particleSpread.toFixed(2);
+                    updateSliderTrack(this, particleSpreadTrack);
+                });
+                
+                // 粒子数量滑块
+                particleCountSlider.addEventListener('input', function() {
+                    particleParams.count = parseInt(this.value);
+                    particleCountValue.textContent = particleParams.count.toLocaleString();
+                    updateSliderTrack(this, particleCountTrack);
+                    createParticles();
+                });
+                
+                // 粒子大小滑块
+                particleSizeSlider.addEventListener('input', function() {
+                    particleParams.baseSize = parseFloat(this.value);
+                    particleSizeValue.textContent = particleParams.baseSize.toFixed(2);
+                    updateSliderTrack(this, particleSizeTrack);
+                    if (particleSystem) {
+                        particleSystem.material.size = particleParams.baseSize;
+                    }
+                });
+                
+                // 粒子速度滑块
+                particleSpeedSlider.addEventListener('input', function() {
+                    particleParams.speed = parseFloat(this.value);
+                    particleSpeedValue.textContent = particleParams.speed.toFixed(1);
+                    updateSliderTrack(this, particleSpeedTrack);
+                });
+                
+                // 形状强度滑块
+                shapeStrengthSlider.addEventListener('input', function() {
+                    particleParams.shapeStrength = parseFloat(this.value);
+                    shapeStrengthValue.textContent = particleParams.shapeStrength.toFixed(2);
+                    updateSliderTrack(this, shapeStrengthTrack);
+                    createParticles();
+                });
+                
+                // 色调滑块
+                hueSlider.addEventListener('input', function() {
+                    particleParams.hue = parseFloat(this.value);
+                    particleParams.colorMode = 'custom';
+                    hueValue.textContent = particleParams.hue.toFixed(2);
+                    updateSliderTrack(this, hueTrack);
+                    createParticles();
+                });
+                
+                // 饱和度滑块
+                saturationSlider.addEventListener('input', function() {
+                    particleParams.saturation = parseFloat(this.value);
+                    particleParams.colorMode = 'custom';
+                    saturationValue.textContent = particleParams.saturation.toFixed(2);
+                    updateSliderTrack(this, saturationTrack);
+                    createParticles();
+                });
+                
+                // 亮度滑块
+                brightnessSlider.addEventListener('input', function() {
+                    particleParams.brightness = parseFloat(this.value);
+                    particleParams.colorMode = 'custom';
+                    brightnessValue.textContent = particleParams.brightness.toFixed(2);
+                    updateSliderTrack(this, brightnessTrack);
+                    createParticles();
+                });
+                
+                // 颜色选择器
+                colorOptions.forEach(option => {
+                    option.addEventListener('click', function() {
+                        // 移除所有按钮的active类
+                        colorOptions.forEach(opt => opt.classList.remove('active'));
+                        // 给当前按钮添加active类
+                        this.classList.add('active');
+                        // 更新颜色模式
+                        particleParams.colorMode = this.dataset.color;
+                        // 根据颜色模式设置HSL值
+                        switch(particleParams.colorMode) {
+                            case 'red':
+                                particleParams.hue = 0.9;
+                                particleParams.saturation = 0.8;
+                                particleParams.brightness = 0.7;
+                                break;
+                            case 'cyan':
+                                particleParams.hue = 0.5;
+                                particleParams.saturation = 0.8;
+                                particleParams.brightness = 0.7;
+                                break;
+                            case 'pink':
+                                particleParams.hue = 0.9;
+                                particleParams.saturation = 0.7;
+                                particleParams.brightness = 0.8;
+                                break;
+                            case 'yellow':
+                                particleParams.hue = 0.15;
+                                particleParams.saturation = 0.8;
+                                particleParams.brightness = 0.7;
+                                break;
+                        }
+                        
+                        // 更新滑块值
+                        hueSlider.value = particleParams.hue;
+                        saturationSlider.value = particleParams.saturation;
+                        brightnessSlider.value = particleParams.brightness;
+                        
+                        // 更新滑块显示
+                        hueValue.textContent = particleParams.hue.toFixed(2);
+                        saturationValue.textContent = particleParams.saturation.toFixed(2);
+                        brightnessValue.textContent = particleParams.brightness.toFixed(2);
+                        
+                        updateSliderTrack(hueSlider, hueTrack);
+                        updateSliderTrack(saturationSlider, saturationTrack);
+                        updateSliderTrack(brightnessSlider, brightnessTrack);
+                        
+                        // 重新创建粒子
+                        createParticles();
+                    });
+                });
+                
+                // 形状选择器
+                shapeOptions.forEach(option => {
+                    option.addEventListener('click', function() {
+                        // 移除所有按钮的active类
+                        shapeOptions.forEach(opt => opt.classList.remove('active'));
+                        // 给当前按钮添加active类
+                        this.classList.add('active');
+                        // 更新形状模式
+                        particleParams.shapeMode = this.dataset.shape;
+                        // 重新创建粒子
+                        createParticles();
+                    });
+                });
+            }
+            
+            // 初始化事件监听
+            function initEventListeners() {
+                // 开始检测
+                startDetectionBtn.addEventListener('click', startHandDetection);
+                
+                // 停止检测
+                stopDetectionBtn.addEventListener('click', stopHandDetection);
+                
+                // 全屏按钮
+                fullscreenBtn.addEventListener('click', toggleFullscreen);
+                
+                // 窗口大小变化
+                window.addEventListener('resize', onWindowResize);
+                
+                // 全屏变化监听
+                document.addEventListener('fullscreenchange', () => {
+                    isFullscreen = !!document.fullscreenElement;
+                });
+                
+                // 初始禁用停止按钮
+                stopDetectionBtn.disabled = true;
+                
+                // 初始化滑块事件
+                initSliderEvents();
+            }
+            
+            // 初始化应用
+            async function initApp() {
+                try {
+                    // 创建数据流效果
+                    createDataStream();
+                    
+                    // 初始化滑块轨道
+                    updateSliderTrack(sensitivitySlider, sensitivityTrack);
+                    updateSliderTrack(particleSpreadSlider, particleSpreadTrack);
+                    updateSliderTrack(particleCountSlider, particleCountTrack);
+                    updateSliderTrack(particleSizeSlider, particleSizeTrack);
+                    updateSliderTrack(particleSpeedSlider, particleSpeedTrack);
+                    updateSliderTrack(shapeStrengthSlider, shapeStrengthTrack);
+                    updateSliderTrack(hueSlider, hueTrack);
+                    updateSliderTrack(saturationSlider, saturationTrack);
+                    updateSliderTrack(brightnessSlider, brightnessTrack);
+                    
+                    // 初始化Three.js
+                    await initThreeJS();
+                    
+                    // 初始化事件监听
+                    initEventListeners();
+                    
+                    // 初始化摄像头
+                    await initCamera();
+                    
+                    // 初始化TensorFlow.js Handpose模型
+                    await initHandposeModel();
+                    
+                } catch (error) {
+                    console.error("应用初始化失败:", error);
+                    updateLoadingText("系统初始化失败: " + error.message);
+                    
+                    // 显示错误信息
+                    setTimeout(() => {
+                        loadingElement.style.display = 'none';
+                        startAnimation();
+                        handStatusText.textContent = "系统错误，启用备用模式";
+                        startDetectionBtn.style.display = 'none';
+                        setupMouseControl();
+                    }, 2000);
+                }
+            }
+            
+            // 启动应用
+            initApp();
+        });
+    </script>
+</body>
+</html>

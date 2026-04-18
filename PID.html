@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>PID 调节教学演示（可调循环时长 + 窗口/全程 + 窗口长度）</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: #f3f4f6;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: #111827;
+        }
+        .page-wrap {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px 16px 40px;
+        }
+        .hero {
+            background: radial-gradient(circle at top left, #dbeafe 0, #eff6ff 40%, #f9fafb 100%);
+            border-radius: 16px;
+            padding: 20px 24px 18px;
+            box-shadow: 0 10px 25px rgba(15,23,42,0.08);
+            margin-bottom: 18px;
+        }
+        .hero-title {
+            margin: 0 0 6px;
+            font-size: 24px;
+            font-weight: 700;
+        }
+        .hero-subtitle {
+            margin: 0;
+            font-size: 13px;
+            color: #4b5563;
+            line-height: 1.6;
+        }
+        .hero-tagline {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #1d4ed8;
+        }
+        .hero-tagline span {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: rgba(37,99,235,0.08);
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr);
+            gap: 16px;
+            align-items: flex-start;
+        }
+        @media (max-width: 900px) {
+            .main-grid {
+                grid-template-columns: minmax(0, 1fr);
+            }
+        }
+
+        /* 左侧教学说明面板 */
+        .teaching-panel {
+            background: #ffffff;
+            border-radius: 14px;
+            padding: 16px 18px 18px;
+            box-shadow: 0 8px 20px rgba(15,23,42,0.05);
+            font-size: 13px;
+            line-height: 1.7;
+        }
+        .teaching-panel h2 {
+            margin-top: 0;
+            margin-bottom: 8px;
+            font-size: 15px;
+            border-left: 3px solid #2563eb;
+            padding-left: 6px;
+        }
+        .teaching-panel h3 {
+            margin-top: 12px;
+            margin-bottom: 4px;
+            font-size: 13px;
+            color: #111827;
+        }
+        .teaching-panel p {
+            margin: 3px 0 6px;
+        }
+        .teaching-panel ol,
+        .teaching-panel ul {
+            margin: 4px 0 6px 20px;
+            padding: 0;
+        }
+        .teaching-panel li {
+            margin-bottom: 3px;
+        }
+        .teaching-panel .note {
+            margin-top: 8px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            background: #f9fafb;
+            border: 1px dashed #d1d5db;
+            color: #4b5563;
+        }
+
+        /* 右侧交互演示卡片 */
+        .interactive-panel {
+            width: 100%;
+        }
+        .interactive-card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 18px 20px 22px;
+            box-shadow: 0 10px 24px rgba(15,23,42,0.07);
+        }
+        .interactive-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 10px;
+        }
+        .interactive-header h2 {
+            margin: 0;
+            font-size: 16px;
+        }
+        .interactive-header span {
+            font-size: 11px;
+            color: #6b7280;
+        }
+
+        /* 控件区样式 */
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px 20px;
+            margin-bottom: 10px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 13px;
+        }
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .control-row label { min-width: 80px; }
+        input[type="range"] { flex: 1; }
+        .value-label {
+            min-width: 72px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+        button {
+            border: none;
+            padding: 7px 14px;
+            border-radius: 999px;
+            font-size: 13px;
+            cursor: pointer;
+            background: #2563eb;
+            color: #fff;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.08s ease;
+        }
+        button.secondary { background: #6b7280; }
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.18);
+        }
+        button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }
+        .status {
+            font-size: 12px;
+            color: #4b5563;
+            margin-bottom: 4px;
+        }
+        .status span {
+            display: inline-block;
+            min-width: 110px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* 时间轴模式切换 */
+        .time-mode-toggle {
+            font-size: 11px;
+            color: #374151;
+            margin-bottom: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 16px;
+            align-items: center;
+        }
+        .time-mode-toggle strong {
+            font-size: 11px;
+        }
+        .time-mode-toggle label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+        }
+        .time-mode-toggle .window-len-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 210px;
+        }
+        .time-mode-toggle input[type="range"] {
+            width: 120px;
+        }
+
+        canvas {
+            width: 100%;
+            max-width: 900px;
+            border-radius: 8px;
+            background: #fafafa;
+            border: 1px solid #e5e7eb;
+        }
+        .legend {
+            margin-top: 4px;
+            font-size: 11px;
+            color: #6b7280;
+        }
+        .legend span { margin-right: 16px; }
+        .legend-color {
+            display: inline-block;
+            width: 12px;
+            height: 4px;
+            border-radius: 999px;
+            margin-right: 4px;
+        }
+        .legend-sp { background: #ef4444; } /* SP 红 */
+        .legend-pv { background: #1d4ed8; } /* PV 蓝 */
+        .legend-p  { background: #22c55e; } /* P 绿 */
+        .legend-i  { background: #f97316; } /* I 橙 */
+        .legend-d  { background: #8b5cf6; } /* D 紫 */
+        .chart-block { margin-top: 10px; margin-bottom: 3px; }
+        .chart-title { font-size: 12px; color: #374151; margin-bottom: 4px; }
+        .curve-toggle {
+            margin-top: 3px;
+            font-size: 11px;
+            color: #444;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 14px;
+        }
+        .curve-toggle label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+        }
+        .desc {
+            margin-top: 10px;
+            font-size: 11px;
+            color: #6b7280;
+            line-height: 1.6;
+        }
+        /* 水桶画布 */
+        #bucketCanvas {
+            width: 260px;
+            height: 260px;
+            display: block;
+            margin: 0 auto;
+        }
+        @media (max-width: 640px) {
+            .controls { grid-template-columns: 1fr; }
+            .time-mode-toggle .window-len-wrap {
+                min-width: 0;
+                flex: 1 1 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="page-wrap">
+    <header class="hero">
+        <h1 class="hero-title">PID 调节教学演示：水桶水位控制模型（可调循环时长）</h1>
+        <p class="hero-subtitle">
+            右侧是可交互的“水桶 + 进出水管 + 曲线”动态模型，左侧给出教学目标和操作流程。
+            时间轴会在达到“循环时长”后自动从 0 s 重新开始一轮；当调整 PID/目标值等参数时，也会从 0 s 开始新的响应。
+        </p>
+        <p class="hero-tagline">
+            <span>“全程模式” = 当前一轮 0–T_c（循环时长）；“窗口模式” = 当前一轮内的局部窗口。</span>
+        </p>
+    </header>
+
+    <div class="main-grid">
+        <!-- 左侧教学说明 -->
+        <section class="teaching-panel">
+            <h2>一、教学目标</h2>
+            <ol>
+                <li>理解比例 P、积分 I、微分 D 在控制中的物理意义。</li>
+                <li>通过“水桶水位”建立对 PID 调节的直观认知。</li>
+                <li>观察不同 Kp、Ki、Kd 以及注水/放水速度对响应全过程和局部细节的影响。</li>
+                <li>训练根据响应曲线调整 PID 参数的直觉。</li>
+            </ol>
+
+            <h2>二、演示建议流程</h2>
+            <h3>1. 只用 P 控制</h3>
+            <ol>
+                <li>设定：Ki = 0，Kd = 0，只保留 Kp。</li>
+                <li>目标水位 SP 取 60，点击“开始”。</li>
+                <li>用“全程”模式观察一整轮 0–T_c 的响应。</li>
+            </ol>
+
+            <h3>2. 加入积分 I</h3>
+            <ol>
+                <li>调节 Ki，滑块松开时自动从 0 s 重新开始一轮。</li>
+                <li>对比不同 Ki 的整轮曲线；用“窗口模式 + 较小窗口长度”看超调细节。</li>
+            </ol>
+
+            <h3>3. 再加入微分 D</h3>
+            <ol>
+                <li>调节 Kd，同样会自动从 0 s 重新开始。</li>
+                <li>观察一轮 0–T_c 中超调、振荡、稳态的差异。</li>
+            </ol>
+
+            <h3>4. 调节执行机构能力</h3>
+            <ol>
+                <li>通过“注水速度 / 放水速度”改变最大流量能力。</li>
+                <li>对比不同组合下完整一轮的响应，看看是否容易饱和或响应太慢。</li>
+            </ol>
+
+            <div class="note">
+                <b>提示：</b>如果你想重新做一次“完整试验”，直接拖动参数滑块或循环时长滑块，
+                松手后时间会自动回到 0 s，并清空上一轮曲线。
+            </div>
+
+            <h2>三、思考题</h2>
+            <ul>
+                <li>在不同循环时长 T_c 下，系统整定是否需要调整？为什么？</li>
+                <li>当 Ki 或 Kd 调得太大时，多轮循环中有哪些现象是重复出现的？</li>
+            </ul>
+        </section>
+
+        <!-- 右侧交互演示 -->
+        <section class="interactive-panel">
+            <div class="interactive-card">
+                <div class="interactive-header">
+                    <h2>交互演示区：水桶 PID 控制</h2>
+                    <span>循环时长、窗口长度、PID 参数均可调</span>
+                </div>
+
+                <!-- 控件区 -->
+                <div class="controls">
+                    <!-- 左：SP + 仿真参数 -->
+                    <div class="control-group">
+                        <div class="control-row">
+                            <label for="spRange">目标值 SP</label>
+                            <input id="spRange" type="range" min="0" max="100" step="1" value="60">
+                            <span class="value-label" id="spValue">60.0</span>
+                        </div>
+                        <div class="control-row">
+                            <label for="tauRange">时间常数 τ</label>
+                            <input id="tauRange" type="range" min="0.2" max="5" step="0.1" value="1.5">
+                            <span class="value-label" id="tauValue">1.5 s</span>
+                        </div>
+                        <div class="control-row">
+                            <label for="dtRange">步长 dt</label>
+                            <input id="dtRange" type="range" min="0.01" max="0.1" step="0.005" value="0.02">
+                            <span class="value-label" id="dtValue">0.020 s</span>
+                        </div>
+                        <div class="control-row">
+                            <label for="fillRateRange">注水速度</label>
+                            <input id="fillRateRange" type="range" min="0" max="50" step="1" value="15">
+                            <span class="value-label" id="fillRateValue">15.0</span>
+                        </div>
+                        <div class="control-row">
+                            <label for="drainRateRange">放水速度</label>
+                            <input id="drainRateRange" type="range" min="0" max="50" step="1" value="10">
+                            <span class="value-label" id="drainRateValue">10.0</span>
+                        </div>
+                    </div>
+
+                    <!-- 右：PID 参数 -->
+                    <div class="control-group">
+                        <div class="control-row">
+                            <label for="kpRange">比例 Kp</label>
+                            <input id="kpRange" type="range" min="0" max="5" step="0.05" value="1.2">
+                            <span class="value-label" id="kpValue">1.20</span>
+                        </div>
+                        <div class="control-row">
+                            <label for="kiRange">积分 Ki</label>
+                            <input id="kiRange" type="range" min="0" max="2" step="0.02" value="0.5">
+                            <span class="value-label" id="kiValue">0.50</span>
+                        </div>
+                        <div class="control-row">
+                            <label for="kdRange">微分 Kd</label>
+                            <input id="kdRange" type="range" min="0" max="1" step="0.02" value="0.1">
+                            <span class="value-label" id="kdValue">0.10</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="buttons">
+                    <button id="toggleBtn">开始</button>
+                    <button id="resetBtn" class="secondary">重置</button>
+                </div>
+
+                <div class="status">
+                    <span id="statusTime">t = 0.00 s</span>
+                    <span id="statusPv">PV = 0.00</span>
+                    <span id="statusU">u = 0.00</span>
+                    <span id="statusE">e = 0.00</span>
+                </div>
+
+                <!-- 时间轴模式切换 + 窗口长度 + 循环时长 -->
+                <div class="time-mode-toggle">
+                    <strong>时间轴模式：</strong>
+                    <label>
+                        <input type="radio" name="timeMode" id="timeModeWindow" value="window">
+                        窗口（当前一轮内）
+                    </label>
+                    <label>
+                        <input type="radio" name="timeMode" id="timeModeGlobal" value="global" checked>
+                        全程（当前一轮 0–T_c）
+                    </label>
+                    <div class="window-len-wrap">
+                        <span>窗口长度：</span>
+                        <input type="range" id="windowLenRange" min="5" max="60" step="1" value="20">
+                        <span id="windowLenValue">20 s</span>
+                    </div>
+                    <div class="window-len-wrap">
+                        <span>循环时长：</span>
+                        <input type="range" id="cycleLenRange" min="20" max="300" step="10" value="80">
+                        <span id="cycleLenValue">80 s</span>
+                    </div>
+                </div>
+
+                <!-- 水桶动画 -->
+                <div class="chart-block">
+                    <div class="chart-title">图 0：水桶水位（带进出水管动画，流速与 |u| 成比例）</div>
+                    <canvas id="bucketCanvas" width="260" height="260"></canvas>
+                    <div class="legend">
+                        <span><span class="legend-color legend-sp"></span>红色虚线：目标水位 SP</span>
+                        <span><span class="legend-color legend-pv"></span>蓝色水面：实际水位 PV</span>
+                    </div>
+                </div>
+
+                <!-- SP & PV 曲线 -->
+                <div class="chart-block">
+                    <div class="chart-title">图 1：目标值 SP 与实际输出 PV 的时间响应</div>
+                    <canvas id="chart" width="900" height="320"></canvas>
+                    <div class="legend">
+                        <span><span class="legend-color legend-sp"></span>红色：目标值 SP</span>
+                        <span><span class="legend-color legend-pv"></span>蓝色：实际输出 PV</span>
+                    </div>
+                    <div class="curve-toggle">
+                        <label><input type="checkbox" id="cbSP" checked> 显示 SP 曲线</label>
+                        <label><input type="checkbox" id="cbPV" checked> 显示 PV 曲线</label>
+                    </div>
+                </div>
+
+                <!-- PID 分量曲线 -->
+                <div class="chart-block">
+                    <div class="chart-title">图 2：PID 输出中 P / I / D 三个分量</div>
+                    <canvas id="pidTermsChart" width="900" height="260"></canvas>
+                    <div class="legend">
+                        <span><span class="legend-color legend-p"></span>绿色：P 分量 = Kp · e</span>
+                        <span><span class="legend-color legend-i"></span>橙色：I 分量 = Ki · ∫e dt</span>
+                        <span><span class="legend-color legend-d"></span>紫色：D 分量 = Kd · de/dt</span>
+                    </div>
+                    <div class="curve-toggle">
+                        <label><input type="checkbox" id="cbP" checked> 显示 P 曲线</label>
+                        <label><input type="checkbox" id="cbI" checked> 显示 I 曲线</label>
+                        <label><input type="checkbox" id="cbD" checked> 显示 D 曲线</label>
+                    </div>
+                </div>
+
+                <div class="desc">
+                    · 时间达到“循环时长”后，自动从 0 s 开始新一轮，曲线只显示当前一轮。<br>
+                    · 调整 SP / Kp / Ki / Kd / τ / dt / 注水 / 放水 / 循环时长 时，松手后会从 0 s 重新开始新的实验响应。<br>
+                    · “全程模式”显示当前一轮的 0–T_c；“窗口模式”在这一轮内再选一个短窗口观察细节。
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<script>
+    // 循环时长（秒），达到后自动从 0 s 重新开始一轮；由滑块控制
+    let maxCycleTime = 80;
+
+    // ========= 获取 DOM 元素 =========
+    const spRange  = document.getElementById('spRange');
+    const kpRange  = document.getElementById('kpRange');
+    const kiRange  = document.getElementById('kiRange');
+    const kdRange  = document.getElementById('kdRange');
+    const tauRange = document.getElementById('tauRange');
+    const dtRange  = document.getElementById('dtRange');
+    const fillRateRange  = document.getElementById('fillRateRange');
+    const drainRateRange = document.getElementById('drainRateRange');
+
+    const spValue  = document.getElementById('spValue');
+    const kpValue  = document.getElementById('kpValue');
+    const kiValue  = document.getElementById('kiValue');
+    const kdValue  = document.getElementById('kdValue');
+    const tauValue = document.getElementById('tauValue');
+    const dtValue  = document.getElementById('dtValue');
+    const fillRateValue  = document.getElementById('fillRateValue');
+    const drainRateValue = document.getElementById('drainRateValue');
+
+    const toggleBtn = document.getElementById('toggleBtn');
+    const resetBtn  = document.getElementById('resetBtn');
+
+    const statusTime = document.getElementById('statusTime');
+    const statusPv   = document.getElementById('statusPv');
+    const statusU    = document.getElementById('statusU');
+    const statusE    = document.getElementById('statusE');
+
+    const canvas = document.getElementById('chart');
+    const ctx = canvas.getContext('2d');
+
+    const pidCanvas = document.getElementById('pidTermsChart');
+    const pidCtx = pidCanvas.getContext('2d');
+
+    const bucketCanvas = document.getElementById('bucketCanvas');
+    const bucketCtx = bucketCanvas.getContext('2d');
+
+    // 复选框
+    const cbSP = document.getElementById('cbSP');
+    const cbPV = document.getElementById('cbPV');
+    const cbP  = document.getElementById('cbP');
+    const cbI  = document.getElementById('cbI');
+    const cbD  = document.getElementById('cbD');
+
+    let showSP = true, showPV = true, showP = true, showI = true, showD = true;
+
+    cbSP.addEventListener('change', () => { showSP = cbSP.checked; draw(); });
+    cbPV.addEventListener('change', () => { showPV = cbPV.checked; draw(); });
+    cbP .addEventListener('change', () => { showP  = cbP.checked;  draw(); });
+    cbI .addEventListener('change', () => { showI  = cbI.checked;  draw(); });
+    cbD .addEventListener('change', () => { showD  = cbD.checked;  draw(); });
+
+    // 时间轴模式切换 + 窗口长度 + 循环时长
+    const timeModeWindow = document.getElementById('timeModeWindow');
+    const timeModeGlobal = document.getElementById('timeModeGlobal');
+    const windowLenRange = document.getElementById('windowLenRange');
+    const windowLenValue = document.getElementById('windowLenValue');
+    const cycleLenRange  = document.getElementById('cycleLenRange');
+    const cycleLenValue  = document.getElementById('cycleLenValue');
+
+    let timeMode = 'global'; // 'window' or 'global'
+    let windowLength = parseFloat(windowLenRange.value);
+    maxCycleTime      = parseFloat(cycleLenRange.value);  // 初始从滑块读取
+
+    timeModeWindow.addEventListener('change', () => {
+        if (timeModeWindow.checked) {
+            timeMode = 'window';
+            draw();
+        }
+    });
+    timeModeGlobal.addEventListener('change', () => {
+        if (timeModeGlobal.checked) {
+            timeMode = 'global';
+            draw();
+        }
+    });
+    windowLenRange.addEventListener('input', () => {
+        windowLength = parseFloat(windowLenRange.value);
+        windowLenValue.textContent = windowLength.toFixed(0) + ' s';
+        draw();
+    });
+
+    // 循环时长滑块：input 实时改显示，change 时重启一轮
+    cycleLenRange.addEventListener('input', () => {
+        maxCycleTime = parseFloat(cycleLenRange.value);
+        cycleLenValue.textContent = maxCycleTime.toFixed(0) + ' s';
+    });
+
+    // ========= 仿真相关变量 =========
+    let running = false;
+    let t = 0;
+    let pv = 0;
+    let u  = 0;
+    let e  = 0;
+    let prevE = 0;
+    let integral = 0;
+
+    let dt   = parseFloat(dtRange.value);
+    let tau  = parseFloat(tauRange.value);
+    let Kp   = parseFloat(kpRange.value);
+    let Ki   = parseFloat(kiRange.value);
+    let Kd   = parseFloat(kdRange.value);
+    let SP   = parseFloat(spRange.value);
+    let fillRate  = parseFloat(fillRateRange.value);
+    let drainRate = parseFloat(drainRateRange.value);
+
+    let pTerm = 0, iTerm = 0, dTerm = 0;
+
+    // 当前这一轮的历史
+    const data = []; // {t, sp, pv, pTerm, iTerm, dTerm, u}
+    const uLimit = 200;          // 控制量限幅
+    const baseLeakCoeff = 0.02;  // 自然泄漏系数
+
+    // 用于绘制进出水管动画的归一化阀门开度 [-1,1]
+    let uNormDraw = 0;
+
+    // ========= 文本更新 =========
+    function updateLabelTexts() {
+        spValue.textContent       = SP.toFixed(1);
+        kpValue.textContent       = Kp.toFixed(2);
+        kiValue.textContent       = Ki.toFixed(2);
+        kdValue.textContent       = Kd.toFixed(2);
+        tauValue.textContent      = tau.toFixed(1) + ' s';
+        dtValue.textContent       = dt.toFixed(3) + ' s';
+        fillRateValue.textContent = fillRate.toFixed(1);
+        drainRateValue.textContent= drainRate.toFixed(1);
+        windowLenValue.textContent= windowLength.toFixed(0) + ' s';
+        cycleLenValue.textContent = maxCycleTime.toFixed(0) + ' s';
+    }
+
+    function updateStatusTexts() {
+        statusTime.textContent = 't = ' + t.toFixed(2) + ' s';
+        statusPv.textContent   = 'PV = ' + pv.toFixed(2);
+        statusU.textContent    = 'u = ' + u.toFixed(2);
+        statusE.textContent    = 'e = ' + e.toFixed(2);
+    }
+
+    // 核心重启：保留当前参数，从 t = 0 开始新一轮，清空曲线
+    function restartCore() {
+        t = 0;
+        pv = 0;
+        u  = 0;
+        e  = 0;
+        prevE = 0;
+        integral = 0;
+        pTerm = 0;
+        iTerm = 0;
+        dTerm = 0;
+        uNormDraw = 0;
+
+        data.length = 0;
+        data.push({ t, sp: SP, pv, pTerm, iTerm, dTerm, u });
+
+        updateStatusTexts();
+        draw();
+    }
+
+    // 参数改变后，从 0 s 开始新一轮，但保持运行/暂停状态不变
+    function restartAfterParamChange() {
+        const wasRunning = running;
+        restartCore();
+        running = wasRunning;
+        toggleBtn.textContent = running ? '暂停' : '开始';
+    }
+
+    // ========= 重置按钮：暂停 + 重启一轮 =========
+    function resetSimulation() {
+        running = false;
+        toggleBtn.textContent = '开始';
+
+        updateLabelTexts();
+        restartCore();
+    }
+
+    // ========= slider 事件 =========
+    // input 实时更新文本，change 时重启一轮
+    spRange.addEventListener('input', () => { SP = parseFloat(spRange.value); updateLabelTexts(); });
+    kpRange.addEventListener('input', () => { Kp = parseFloat(kpRange.value); updateLabelTexts(); });
+    kiRange.addEventListener('input', () => { Ki = parseFloat(kiRange.value); updateLabelTexts(); });
+    kdRange.addEventListener('input', () => { Kd = parseFloat(kdRange.value); updateLabelTexts(); });
+    tauRange.addEventListener('input', () => { tau = parseFloat(tauRange.value); updateLabelTexts(); });
+    dtRange.addEventListener('input', () => { dt  = parseFloat(dtRange.value);  updateLabelTexts(); });
+    fillRateRange.addEventListener('input', () => { fillRate  = parseFloat(fillRateRange.value);  updateLabelTexts(); });
+    drainRateRange.addEventListener('input', () => { drainRate = parseFloat(drainRateRange.value); updateLabelTexts(); });
+
+    spRange.addEventListener('change', restartAfterParamChange);
+    kpRange.addEventListener('change', restartAfterParamChange);
+    kiRange.addEventListener('change', restartAfterParamChange);
+    kdRange.addEventListener('change', restartAfterParamChange);
+    tauRange.addEventListener('change', restartAfterParamChange);
+    dtRange.addEventListener('change', restartAfterParamChange);
+    fillRateRange.addEventListener('change', restartAfterParamChange);
+    drainRateRange.addEventListener('change', restartAfterParamChange);
+    cycleLenRange.addEventListener('change', restartAfterParamChange);
+
+    toggleBtn.addEventListener('click', () => {
+        running = !running;
+        toggleBtn.textContent = running ? '暂停' : '开始';
+    });
+    resetBtn.addEventListener('click', resetSimulation);
+
+    // ========= 仿真步 =========
+    function simulateStep() {
+        if (running) {
+            // 偏差
+            e = SP - pv;
+
+            // PID 三项
+            pTerm = Kp * e;
+
+            integral += e * dt;
+            const integralLimit = 500;
+            if (integral >  integralLimit) integral =  integralLimit;
+            if (integral < -integralLimit) integral = -integralLimit;
+            iTerm = Ki * integral;
+
+            const derivative = (e - prevE) / dt;
+            prevE = e;
+            dTerm = Kd * derivative;
+
+            u = pTerm + iTerm + dTerm;
+
+            // 限幅
+            if (u >  uLimit) u =  uLimit;
+            if (u < -uLimit) u = -uLimit;
+
+            // 归一化 [-1,1] 用于水管动画
+            let uNorm = u / uLimit;
+            if (uNorm >  1) uNorm =  1;
+            if (uNorm < -1) uNorm = -1;
+            uNormDraw = uNorm;
+
+            // 流量模型
+            let qIn = 0, qOut = 0;
+            if (uNorm >= 0) {
+                qIn  = uNorm * fillRate;
+                qOut = baseLeakCoeff * pv; // 自然泄漏
+            } else {
+                qIn  = 0;
+                qOut = baseLeakCoeff * pv + (-uNorm) * drainRate; // 额外放水
+            }
+
+            const dPVdt = (qIn - qOut) / tau;
+            pv += dPVdt * dt;
+
+            // 限制在 0~100
+            if (pv < 0)   pv = 0;
+            if (pv > 100) pv = 100;
+
+            t += dt;
+
+            // 记录当前这一轮的数据
+            data.push({ t, sp: SP, pv, pTerm, iTerm, dTerm, u });
+
+            updateStatusTexts();
+            draw();
+
+            // 时间达到 maxCycleTime 后，从 0 s 开始下一轮
+            if (t >= maxCycleTime) {
+                restartCore();
+            }
+        }
+        requestAnimationFrame(simulateStep);
+    }
+
+    // ========= 统一绘制 =========
+    function draw() {
+        drawBucket();
+        drawMainChart();
+        drawPidTermsChart();
+    }
+
+    // ========= 水桶 + 进出水管动画 =========
+    function drawBucket() {
+        const ctxB = bucketCtx;
+        const w = bucketCanvas.width;
+        const h = bucketCanvas.height;
+
+        ctxB.clearRect(0, 0, w, h);
+        ctxB.fillStyle = '#f9fafb';
+        ctxB.fillRect(0, 0, w, h);
+
+        const bucketWidth  = w * 0.55;
+        const bucketHeight = h * 0.68;
+        const bucketX = (w - bucketWidth) / 2;
+        const bucketY = h * 0.08;
+
+        // 桶外框
+        ctxB.strokeStyle = '#9ca3af';
+        ctxB.lineWidth = 3;
+        ctxB.beginPath();
+        ctxB.moveTo(bucketX, bucketY);
+        ctxB.lineTo(bucketX, bucketY + bucketHeight);
+        ctxB.lineTo(bucketX + bucketWidth, bucketY + bucketHeight);
+        ctxB.lineTo(bucketX + bucketWidth, bucketY);
+        ctxB.closePath();
+        ctxB.stroke();
+
+        const innerX = bucketX + 4;
+        const innerY = bucketY + 4;
+        const innerW = bucketWidth - 8;
+        const innerH = bucketHeight - 8;
+
+        const pvClamped = Math.max(0, Math.min(100, pv));
+        const spClamped = Math.max(0, Math.min(100, SP));
+        const pvRatio = pvClamped / 100;
+        const spRatio = spClamped / 100;
+
+        const waterTop = innerY + innerH * (1 - pvRatio);
+
+        // 水体
+        ctxB.fillStyle = 'rgba(59,130,246,0.35)';
+        ctxB.fillRect(innerX, waterTop, innerW, innerY + innerH - waterTop);
+
+        // 水面线 PV
+        ctxB.strokeStyle = '#1d4ed8';
+        ctxB.lineWidth = 2;
+        ctxB.beginPath();
+        ctxB.moveTo(innerX, waterTop);
+        ctxB.lineTo(innerX + innerW, waterTop);
+        ctxB.stroke();
+
+        // SP 目标线
+        const spY = innerY + innerH * (1 - spRatio);
+        ctxB.strokeStyle = '#ef4444';
+        ctxB.setLineDash([4, 4]);
+        ctxB.lineWidth = 1.5;
+        ctxB.beginPath();
+        ctxB.moveTo(innerX - 4, spY);
+        ctxB.lineTo(innerX + innerW + 4, spY);
+        ctxB.stroke();
+        ctxB.setLineDash([]);
+
+        // ====== 进水管 / 放水管动画 ======
+        const flow = Math.min(1, Math.max(0, Math.abs(uNormDraw)));
+        const time = performance.now() / 1000;
+
+        // 进水管（左上）
+        if (uNormDraw > 0.01) {
+            const pipeW = 22;
+            const pipeH = 8;
+            const pipeX = innerX - pipeW - 12;
+            const pipeY = innerY + innerH * 0.25;
+
+            ctxB.fillStyle = '#9ca3af';
+            ctxB.fillRect(pipeX, pipeY, pipeW, pipeH);
+
+            const jetThickness = 4 + 10 * flow;
+            const jetLen = 8 + 24 * flow;
+
+            const jetStartX = pipeX + pipeW;
+            const jetStartY = pipeY + pipeH / 2;
+            const jetEndX   = innerX;
+            const jetEndY   = innerY + innerH * 0.3;
+
+            ctxB.strokeStyle = 'rgba(59,130,246,0.9)';
+            ctxB.lineWidth = jetThickness;
+            ctxB.lineCap = 'round';
+            ctxB.beginPath();
+            ctxB.moveTo(jetStartX, jetStartY);
+            ctxB.lineTo(jetEndX, jetEndY);
+            ctxB.stroke();
+
+            const segmentCount = 3 + Math.round(3 * flow);
+            ctxB.lineWidth = jetThickness - 2;
+            for (let i = 0; i < segmentCount; i++) {
+                const f = (i + (time * 2 % 1)) / segmentCount;
+                const sx = jetStartX + (jetEndX - jetStartX) * f;
+                const sy = jetStartY + (jetEndY - jetStartY) * f;
+                ctxB.beginPath();
+                ctxB.moveTo(sx - jetLen * 0.02, sy);
+                ctxB.lineTo(sx + jetLen * 0.02, sy);
+                ctxB.stroke();
+            }
+        }
+
+        // 放水管（右下）
+        if (uNormDraw < -0.01) {
+            const pipeW = 22;
+            const pipeH = 8;
+            const pipeX = innerX + innerW + 12;
+            const pipeY = innerY + innerH * 0.7;
+
+            ctxB.fillStyle = '#9ca3af';
+            ctxB.fillRect(pipeX, pipeY, pipeW, pipeH);
+
+            const jetThickness = 4 + 10 * flow;
+            const jetLen = 10 + 28 * flow;
+
+            const jetStartX = innerX + innerW;
+            const jetStartY = innerY + innerH * 0.8;
+            const jetEndX   = pipeX;
+            const jetEndY   = pipeY + pipeH / 2 + 12;
+
+            ctxB.strokeStyle = 'rgba(59,130,246,0.9)';
+            ctxB.lineWidth = jetThickness;
+            ctxB.lineCap = 'round';
+            ctxB.beginPath();
+            ctxB.moveTo(jetStartX, jetStartY);
+            ctxB.lineTo(jetEndX, jetEndY);
+            ctxB.stroke();
+
+            const segmentCount = 3 + Math.round(3 * flow);
+            ctxB.lineWidth = jetThickness - 2;
+            for (let i = 0; i < segmentCount; i++) {
+                const f = (i + (time * 2 % 1)) / segmentCount;
+                const sx = jetStartX + (jetEndX - jetStartX) * f;
+                const sy = jetStartY + (jetEndY - jetStartY) * f;
+                ctxB.beginPath();
+                ctxB.moveTo(sx - jetLen * 0.02, sy);
+                ctxB.lineTo(sx + jetLen * 0.02, sy);
+                ctxB.stroke();
+            }
+        }
+
+        // 标注文字
+        ctxB.font = '12px system-ui, sans-serif';
+        ctxB.textAlign = 'left';
+        ctxB.textBaseline = 'bottom';
+        ctxB.fillStyle = '#ef4444';
+        ctxB.fillText('SP', innerX + innerW + 6, spY + 2);
+
+        ctxB.fillStyle = '#1d4ed8';
+        ctxB.textBaseline = 'top';
+        ctxB.fillText('PV', innerX + innerW + 6, waterTop - 2);
+
+        ctxB.textAlign = 'center';
+        ctxB.textBaseline = 'bottom';
+        ctxB.fillStyle = '#374151';
+        ctxB.fillText('目标水位 SP = ' + SP.toFixed(1), w / 2, h - 28);
+        ctxB.fillText('实际水位 PV = ' + pv.toFixed(1), w / 2, h - 10);
+    }
+
+    // ========= 图 1：SP & PV =========
+    function drawMainChart() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const w = canvas.width, h = canvas.height;
+        ctx.fillStyle = '#fafafa';
+        ctx.fillRect(0, 0, w, h);
+
+        const marginLeft = 50, marginRight = 20, marginTop = 20, marginBottom = 30;
+        const plotX0 = marginLeft, plotY0 = marginTop;
+        const plotW  = w - marginLeft - marginRight;
+        const plotH  = h - marginTop - marginBottom;
+
+        ctx.strokeStyle = '#cccccc';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(plotX0, plotY0, plotW, plotH);
+
+        if (data.length === 0) return;
+
+        const tMax = data[data.length - 1].t;
+        let tMin;
+
+        if (timeMode === 'global') {
+            tMin = 0;
+        } else {
+            tMin = Math.max(0, tMax - windowLength);
+        }
+
+        let yMin = Infinity, yMax = -Infinity;
+        for (const d of data) {
+            if (d.t < tMin) continue;
+            if (d.pv < yMin) yMin = d.pv;
+            if (d.pv > yMax) yMax = d.pv;
+            if (d.sp < yMin) yMin = d.sp;
+            if (d.sp > yMax) yMax = d.sp;
+        }
+        if (!isFinite(yMin) || !isFinite(yMax)) { yMin = 0; yMax = 1; }
+        const paddingY = (yMax - yMin) * 0.1 + 1;
+        yMin -= paddingY; yMax += paddingY;
+        if (yMax - yMin < 1) yMax = yMin + 1;
+
+        function toX(tt) {
+            const r = (tt - tMin) / (tMax - tMin || 1);
+            return plotX0 + r * plotW;
+        }
+        function toY(yy) {
+            const r = (yy - yMin) / (yMax - yMin || 1);
+            return plotY0 + (1 - r) * plotH;
+        }
+
+        // 网格
+        ctx.strokeStyle = '#e5e5e5';
+        ctx.fillStyle = '#888';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+
+        const gridLines = 5;
+        for (let i = 0; i <= gridLines; i++) {
+            const f = i / gridLines;
+            const yVal = yMin + (yMax - yMin) * f;
+            const y = plotY0 + (1 - f) * plotH;
+            ctx.beginPath();
+            ctx.moveTo(plotX0, y);
+            ctx.lineTo(plotX0 + plotW, y);
+            ctx.stroke();
+            ctx.fillText(yVal.toFixed(1), plotX0 - 4, y);
+        }
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        const xTicks = 6;
+        const tSpan = Math.max(1e-6, tMax - tMin);
+        for (let i = 0; i <= xTicks; i++) {
+            const f = i / xTicks;
+            const tt = tMin + tSpan * f;
+            const x = plotX0 + f * plotW;
+            const y = plotY0 + plotH;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x, y + 4);
+            ctx.strokeStyle = '#cccccc';
+            ctx.stroke();
+            ctx.fillStyle = '#888';
+            ctx.fillText(tt.toFixed(1), x, y + 6);
+        }
+
+        if (showSP) {
+            ctx.beginPath();
+            let started = false;
+            for (let i = 0; i < data.length; i++) {
+                const d = data[i];
+                if (d.t < tMin) continue;
+                const x = toX(d.t), y = toY(d.sp);
+                if (!started) { ctx.moveTo(x, y); started = true; }
+                else ctx.lineTo(x, y);
+            }
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        if (showPV) {
+            ctx.beginPath();
+            let started = false;
+            for (let i = 0; i < data.length; i++) {
+                const d = data[i];
+                if (d.t < tMin) continue;
+                const x = toX(d.t), y = toY(d.pv);
+                if (!started) { ctx.moveTo(x, y); started = true; }
+                else ctx.lineTo(x, y);
+            }
+            ctx.strokeStyle = '#1d4ed8';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+    }
+
+    // ========= 图 2：P / I / D =========
+    function drawPidTermsChart() {
+        pidCtx.clearRect(0, 0, pidCanvas.width, pidCanvas.height);
+
+        const w = pidCanvas.width, h = pidCanvas.height;
+        pidCtx.fillStyle = '#fafafa';
+        pidCtx.fillRect(0, 0, w, h);
+
+        const marginLeft = 50, marginRight = 20, marginTop = 20, marginBottom = 30;
+        const plotX0 = marginLeft, plotY0 = marginTop;
+        const plotW  = w - marginLeft - marginRight;
+        const plotH  = h - marginTop - marginBottom;
+
+        pidCtx.strokeStyle = '#cccccc';
+        pidCtx.lineWidth = 1;
+        pidCtx.strokeRect(plotX0, plotY0, plotW, plotH);
+
+        if (data.length === 0) return;
+
+        const tMax = data[data.length - 1].t;
+        let tMin;
+        if (timeMode === 'global') {
+            tMin = 0;
+        } else {
+            tMin = Math.max(0, tMax - windowLength);
+        }
+
+        let yMin = Infinity, yMax = -Infinity;
+        for (const d of data) {
+            if (d.t < tMin) continue;
+            if (d.pTerm < yMin) yMin = d.pTerm;
+            if (d.pTerm > yMax) yMax = d.pTerm;
+            if (d.iTerm < yMin) yMin = d.iTerm;
+            if (d.iTerm > yMax) yMax = d.iTerm;
+            if (d.dTerm < yMin) yMin = d.dTerm;
+            if (d.dTerm > yMax) yMax = d.dTerm;
+        }
+        if (!isFinite(yMin) || !isFinite(yMax)) { yMin = -1; yMax = 1; }
+        const paddingY = (yMax - yMin) * 0.1 + 1;
+        yMin -= paddingY; yMax += paddingY;
+        if (yMax - yMin < 1) yMax = yMin + 1;
+
+        function toX(tt) {
+            const r = (tt - tMin) / (tMax - tMin || 1);
+            return plotX0 + r * plotW;
+        }
+        function toY(yy) {
+            const r = (yy - yMin) / (yMax - yMin || 1);
+            return plotY0 + (1 - r) * plotH;
+        }
+
+        pidCtx.strokeStyle = '#e5e5e5';
+        pidCtx.fillStyle = '#888';
+        pidCtx.font = '10px sans-serif';
+        pidCtx.textAlign = 'right';
+        pidCtx.textBaseline = 'middle';
+
+        const gridLines = 5;
+        for (let i = 0; i <= gridLines; i++) {
+            const f = i / gridLines;
+            const yVal = yMin + (yMax - yMin) * f;
+            const y = plotY0 + (1 - f) * plotH;
+            pidCtx.beginPath();
+            pidCtx.moveTo(plotX0, y);
+            pidCtx.lineTo(plotX0 + plotW, y);
+            pidCtx.stroke();
+            pidCtx.fillText(yVal.toFixed(1), plotX0 - 4, y);
+        }
+
+        pidCtx.textAlign = 'center';
+        pidCtx.textBaseline = 'top';
+        const xTicks = 6;
+        const tSpan = Math.max(1e-6, tMax - tMin);
+        for (let i = 0; i <= xTicks; i++) {
+            const f = i / xTicks;
+            const tt = tMin + tSpan * f;
+            const x = plotX0 + f * plotW;
+            const y = plotY0 + plotH;
+            pidCtx.beginPath();
+            pidCtx.moveTo(x, y);
+            pidCtx.lineTo(x, y + 4);
+            pidCtx.strokeStyle = '#cccccc';
+            pidCtx.stroke();
+            pidCtx.fillStyle = '#888';
+            pidCtx.fillText(tt.toFixed(1), x, y + 6);
+        }
+
+        if (showP) {
+            pidCtx.beginPath();
+            let started = false;
+            for (let i = 0; i < data.length; i++) {
+                const d = data[i];
+                if (d.t < tMin) continue;
+                const x = toX(d.t), y = toY(d.pTerm);
+                if (!started) { pidCtx.moveTo(x, y); started = true; }
+                else pidCtx.lineTo(x, y);
+            }
+            pidCtx.strokeStyle = '#22c55e';
+            pidCtx.lineWidth = 1.5;
+            pidCtx.stroke();
+        }
+
+        if (showI) {
+            pidCtx.beginPath();
+            let started = false;
+            for (let i = 0; i < data.length; i++) {
+                const d = data[i];
+                if (d.t < tMin) continue;
+                const x = toX(d.t), y = toY(d.iTerm);
+                if (!started) { pidCtx.moveTo(x, y); started = true; }
+                else pidCtx.lineTo(x, y);
+            }
+            pidCtx.strokeStyle = '#f97316';
+            pidCtx.lineWidth = 1.5;
+            pidCtx.stroke();
+        }
+
+        if (showD) {
+            pidCtx.beginPath();
+            let started = false;
+            for (let i = 0; i < data.length; i++) {
+                const d = data[i];
+                if (d.t < tMin) continue;
+                const x = toX(d.t), y = toY(d.dTerm);
+                if (!started) { pidCtx.moveTo(x, y); started = true; }
+                else pidCtx.lineTo(x, y);
+            }
+            pidCtx.strokeStyle = '#8b5cf6';
+            pidCtx.lineWidth = 1.5;
+            pidCtx.stroke();
+        }
+    }
+
+    // ========= 启动 =========
+    updateLabelTexts();
+    resetSimulation();
+    requestAnimationFrame(simulateStep);
+</script>
+</body>
+</html>

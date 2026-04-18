@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>谷物图像分析系统</title>
+
+  <!-- 外部资源 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+
+  <!-- Tailwind 配置 -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#4F46E5',
+            secondary: '#6366F1',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .canvas-container {
+      width: 100%;
+      height: 200px;
+      background-color: #f3f4f6;
+      border-radius: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    canvas {
+      max-width: 100%;
+      max-height: 100%;
+    }
+    #uploadArea {
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    #uploadArea:hover {
+      background-color: #f1f5f9;
+      border-color: #6366F1;
+    }
+    .upload-active {
+      background-color: #e0f2fe !important;
+      border-color: #2563EB !important;
+    }
+  </style>
+</head>
+
+<body class="bg-gray-50 text-gray-800">
+  <div class="container mx-auto px-4 py-8 max-w-6xl">
+    <!-- 标题 -->
+    <header class="text-center mb-8">
+      <h1 class="text-2xl md:text-3xl font-bold text-primary mb-2">谷物图像分析系统</h1>
+      <p class="text-gray-600">上传图片并进行去除背景、灰度化、二值化、轮廓提取和斜率分析</p>
+    </header>
+
+    <main>
+      <!-- 1. 上传区域 -->
+      <div class="bg-white rounded-2xl shadow-sm p-6 mb-8">
+        <h2 class="text-xl font-semibold mb-4">1. 上传图像</h2>
+
+        <div id="uploadArea" class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center mb-6 bg-gray-50">
+          <input type="file" id="imageUpload" accept="image/*" class="hidden">
+          <i class="fa fa-image text-5xl text-gray-400 mb-3"></i>
+          <p class="text-gray-600 mb-4">拖拽图片到此处，或点击下面按钮选择图片</p>
+          <button id="browseBtn"
+                  class="bg-secondary text-white px-6 py-2 rounded-lg hover:bg-primary transition-colors">
+            <i class="fa fa-folder-open mr-2"></i>选择图片
+          </button>
+        </div>
+
+        <!-- 原始图片预览 -->
+        <div class="mb-6">
+          <h3 class="text-sm font-medium text-gray-600 mb-2">原始图片预览</h3>
+          <div class="canvas-container">
+            <canvas id="originalCanvas" class="hidden"></canvas>
+            <div id="previewPlaceholder" class="text-gray-400 text-center px-4">
+              <i class="fa fa-picture-o text-3xl mb-2 block"></i>
+              图片上传后将显示在这里
+            </div>
+          </div>
+        </div>
+
+        <button id="processBtn"
+                class="w-full bg-primary text-white py-3 rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled>
+          <i class="fa fa-play-circle mr-2"></i>开始处理
+        </button>
+      </div>
+
+      <!-- 处理进度 -->
+      <div id="progressContainer" class="mb-8 hidden">
+        <div class="flex justify-between items-center mb-2">
+          <span class="font-medium" id="progressText">处理中...</span>
+          <span class="text-gray-500" id="progressPercent">0%</span>
+        </div>
+        <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+          <div id="progressBar" class="h-full bg-primary rounded-full" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- 处理步骤结果 2×3 卡片 -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <!-- 2 去除背景 -->
+        <div class="bg-white rounded-2xl shadow-sm p-4">
+          <h3 class="font-medium text-primary mb-3">2. 去除背景</h3>
+          <div class="canvas-container">
+            <canvas id="bgRemovedCanvas"></canvas>
+          </div>
+        </div>
+
+        <!-- 3 灰度化 -->
+        <div class="bg-white rounded-2xl shadow-sm p-4">
+          <h3 class="font-medium text-primary mb-3">3. 灰度化处理</h3>
+          <div class="canvas-container">
+            <canvas id="grayscaleCanvas"></canvas>
+          </div>
+        </div>
+
+        <!-- 4 二值化 -->
+        <div class="bg-white rounded-2xl shadow-sm p-4">
+          <h3 class="font-medium text-primary mb-3">4. 二值化处理</h3>
+          <div class="canvas-container">
+            <canvas id="binarizationCanvas"></canvas>
+          </div>
+        </div>
+
+        <!-- 5 轮廓提取 -->
+        <div class="bg-white rounded-2xl shadow-sm p-4">
+          <h3 class="font-medium text-primary mb-3">5. 轮廓提取</h3>
+          <div class="canvas-container">
+            <canvas id="contourCanvas"></canvas>
+          </div>
+        </div>
+
+        <!-- 6 轮廓曲线 -->
+        <div class="bg-white rounded-2xl shadow-sm p-4">
+          <h3 class="font-medium text-primary mb-3">6. 轮廓曲线</h3>
+          <div class="canvas-container">
+            <canvas id="contourLineCanvas"></canvas>
+          </div>
+        </div>
+
+        <!-- 7 斜率与拟合公式 -->
+        <div class="bg-white rounded-2xl shadow-sm p-4">
+          <h3 class="font-medium text-primary mb-3">7. 斜率与拟合公式</h3>
+          <div class="h-40 flex flex-col items-center justify-center text-center text-sm">
+            <div class="mb-1">
+              <span class="text-gray-600">左侧斜率：</span>
+              <span id="leftSlope" class="font-bold text-primary">-</span>
+            </div>
+            <div class="mb-2">
+              <span class="text-gray-600">右侧斜率：</span>
+              <span id="rightSlope" class="font-bold text-primary">-</span>
+            </div>
+            <div class="mb-1">
+              <span class="text-gray-600">左侧拟合：</span>
+              <span id="leftFormula" class="font-bold text-secondary break-all">-</span>
+            </div>
+            <div>
+              <span class="text-gray-600">右侧拟合：</span>
+              <span id="rightFormula" class="font-bold text-secondary break-all">-</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 回归图 -->
+      <div class="bg-white rounded-2xl shadow-sm p-6">
+        <h3 class="font-semibold text-lg mb-4">线性回归分析</h3>
+        <div class="h-80">
+          <canvas id="regressionChart"></canvas>
+        </div>
+      </div>
+    </main>
+
+    <footer class="text-center text-gray-500 text-sm mt-12 py-4">
+      谷物图像分析系统 &copy; 2024
+    </footer>
+  </div>
+
+  <!-- 功能脚本 -->
+  <script>
+    // ===== 全局常量 =====
+    const MAX_CANVAS_HEIGHT = 200;          // canvas 统一高度
+    const MAX_FILE_SIZE = 5 * 1024 * 1024;  // 5 MB
+    const BG_THRESHOLD = 230;               // 背景去除阈值
+    const BIN_THRESHOLD = 127;              // 二值化阈值
+    const PROGRESS_DELAY = 300;             // 每步进度条停留时间（毫秒）
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // DOM 元素
+      const uploadArea = document.getElementById('uploadArea');
+      const imageUpload = document.getElementById('imageUpload');
+      const browseBtn = document.getElementById('browseBtn');
+      const processBtn = document.getElementById('processBtn');
+
+      const originalCanvas = document.getElementById('originalCanvas');
+      const previewPlaceholder = document.getElementById('previewPlaceholder');
+
+      const progressContainer = document.getElementById('progressContainer');
+      const progressBar = document.getElementById('progressBar');
+      const progressText = document.getElementById('progressText');
+      const progressPercent = document.getElementById('progressPercent');
+
+      const bgRemovedCanvas = document.getElementById('bgRemovedCanvas');
+      const grayscaleCanvas = document.getElementById('grayscaleCanvas');
+      const binarizationCanvas = document.getElementById('binarizationCanvas');
+      const contourCanvas = document.getElementById('contourCanvas');
+      const contourLineCanvas = document.getElementById('contourLineCanvas');
+
+      const leftSlope = document.getElementById('leftSlope');
+      const rightSlope = document.getElementById('rightSlope');
+      const leftFormula = document.getElementById('leftFormula');
+      const rightFormula = document.getElementById('rightFormula');
+
+      // 上下文
+      const originalCtx = originalCanvas.getContext('2d');
+      const bgRemovedCtx = bgRemovedCanvas.getContext('2d');
+      const grayscaleCtx = grayscaleCanvas.getContext('2d');
+      const binarizationCtx = binarizationCanvas.getContext('2d');
+      const contourCtx = contourCanvas.getContext('2d');
+      const contourLineCtx = contourLineCanvas.getContext('2d');
+
+      // 全局变量
+      let uploadedImage = null;
+      let imageWidth = 0;
+      let imageHeight = 0;
+      let contourPoints = [];
+      let regressionChart = null;
+
+      // ===== 上传相关 =====
+      function initUpload() {
+        browseBtn.addEventListener('click', () => {
+          imageUpload.click();
+        });
+
+        uploadArea.addEventListener('click', (e) => {
+          if (e.target !== browseBtn && !browseBtn.contains(e.target)) {
+            imageUpload.click();
+          }
+        });
+
+        imageUpload.addEventListener('change', (e) => {
+          if (e.target.files && e.target.files[0]) {
+            handleFileSelect(e.target.files[0]);
+          }
+        });
+
+        uploadArea.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          uploadArea.classList.add('upload-active');
+        });
+
+        uploadArea.addEventListener('dragleave', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          uploadArea.classList.remove('upload-active');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          uploadArea.classList.remove('upload-active');
+          if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            handleFileSelect(e.dataTransfer.files[0]);
+          }
+        });
+
+        // 禁止浏览器默认拖拽打开图片
+        document.addEventListener('dragover', (e) => e.preventDefault());
+        document.addEventListener('drop', (e) => e.preventDefault());
+      }
+
+      function handleFileSelect(file) {
+        if (!file.type.match(/^image\/(jpeg|png|jpg)$/)) {
+          alert('请上传 JPG 或 PNG 格式图片');
+          return;
+        }
+        if (file.size > MAX_FILE_SIZE) {
+          alert('图片大小不能超过 5MB');
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const scale = MAX_CANVAS_HEIGHT / img.height;
+            imageWidth = Math.round(img.width * scale);
+            imageHeight = MAX_CANVAS_HEIGHT;
+
+            [originalCanvas, bgRemovedCanvas, grayscaleCanvas,
+             binarizationCanvas, contourCanvas, contourLineCanvas].forEach((c) => {
+              c.width = imageWidth;
+              c.height = imageHeight;
+            });
+
+            originalCtx.clearRect(0, 0, imageWidth, imageHeight);
+            originalCtx.drawImage(img, 0, 0, imageWidth, imageHeight);
+
+            originalCanvas.classList.remove('hidden');
+            previewPlaceholder.classList.add('hidden');
+
+            uploadedImage = img;
+            processBtn.disabled = false;
+
+            resetResults();
+            resetProgressUI();
+          };
+          img.onerror = () => {
+            alert('图像加载失败，请尝试其他图片');
+          };
+          img.src = e.target.result;
+        };
+        reader.onerror = () => {
+          alert('文件读取失败，请重试');
+        };
+        reader.readAsDataURL(file);
+      }
+
+      function resetResults() {
+        [bgRemovedCtx, grayscaleCtx, binarizationCtx, contourCtx, contourLineCtx].forEach((ctx) => {
+          ctx.clearRect(0, 0, imageWidth, imageHeight);
+        });
+        contourPoints = [];
+        leftSlope.textContent = '-';
+        rightSlope.textContent = '-';
+        leftFormula.textContent = '-';
+        rightFormula.textContent = '-';
+        if (regressionChart) {
+          regressionChart.destroy();
+          regressionChart = null;
+        }
+      }
+
+      function resetProgressUI() {
+        progressBar.style.width = '0%';
+        progressText.textContent = '等待处理...';
+        progressPercent.textContent = '0%';
+        progressContainer.classList.add('hidden');
+      }
+
+      // ===== 处理流程 =====
+      processBtn.addEventListener('click', async () => {
+        if (!uploadedImage) return;
+
+        processBtn.disabled = true;
+        progressContainer.classList.remove('hidden');
+        await updateProgress(0, '开始处理...');
+
+        try {
+          await removeBackground();
+          await updateProgress(15, '去除背景完成');
+
+          await applyGrayscale();
+          await updateProgress(30, '灰度化完成');
+
+          await applyBinarization();
+          await updateProgress(45, '二值化完成');
+
+          contourPoints = await extractContours();
+          await updateProgress(60, '轮廓提取完成');
+
+          await drawContourLine();
+          await updateProgress(75, '轮廓曲线绘制完成');
+
+          await performRegression();
+          await updateProgress(100, '分析完成');
+        } catch (err) {
+          console.error(err);
+          alert('处理过程中发生错误，请重试');
+        } finally {
+          setTimeout(() => {
+            processBtn.disabled = false;
+          }, 400);
+        }
+      });
+
+      function updateProgress(percent, text) {
+        progressBar.style.width = percent + '%';
+        progressText.textContent = text;
+        progressPercent.textContent = percent + '%';
+        return new Promise((resolve) => setTimeout(resolve, PROGRESS_DELAY));
+      }
+
+      // ===== 图像处理函数 =====
+      function removeBackground() {
+        return new Promise((resolve) => {
+          const imageData = originalCtx.getImageData(0, 0, imageWidth, imageHeight);
+          const data = imageData.data;
+          const resultData = bgRemovedCtx.createImageData(imageWidth, imageHeight);
+          const out = resultData.data;
+
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            const brightness = (r + g + b) / 3;
+
+            if (brightness < BG_THRESHOLD) {
+              out[i] = r;
+              out[i + 1] = g;
+              out[i + 2] = b;
+              out[i + 3] = 255;
+            } else {
+              out[i] = 255;
+              out[i + 1] = 255;
+              out[i + 2] = 255;
+              out[i + 3] = 255;
+            }
+          }
+          bgRemovedCtx.putImageData(resultData, 0, 0);
+          resolve();
+        });
+      }
+
+      function applyGrayscale() {
+        return new Promise((resolve) => {
+          const imageData = bgRemovedCtx.getImageData(0, 0, imageWidth, imageHeight);
+          const data = imageData.data;
+          for (let i = 0; i < data.length; i += 4) {
+            const gray = Math.round(
+              0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+            );
+            data[i] = gray;
+            data[i + 1] = gray;
+            data[i + 2] = gray;
+          }
+          grayscaleCtx.putImageData(imageData, 0, 0);
+          resolve();
+        });
+      }
+
+      function applyBinarization() {
+        return new Promise((resolve) => {
+          const imageData = grayscaleCtx.getImageData(0, 0, imageWidth, imageHeight);
+          const data = imageData.data;
+          for (let i = 0; i < data.length; i += 4) {
+            const value = data[i] < BIN_THRESHOLD ? 0 : 255;
+            data[i] = value;
+            data[i + 1] = value;
+            data[i + 2] = value;
+          }
+          binarizationCtx.putImageData(imageData, 0, 0);
+          resolve();
+        });
+      }
+
+      function extractContours() {
+        return new Promise((resolve) => {
+          const imageData = binarizationCtx.getImageData(0, 0, imageWidth, imageHeight);
+          const data = imageData.data;
+
+          contourCtx.putImageData(imageData, 0, 0);
+
+          const contours = [];
+          for (let x = 0; x < imageWidth; x += 2) {
+            for (let y = 0; y < imageHeight; y += 2) {
+              const idx = (y * imageWidth + x) * 4;
+              if (data[idx] === 0) { // 黑色
+                contours.push({ x, y });
+                break;
+              }
+            }
+          }
+
+          if (contours.length > 0) {
+            contourCtx.strokeStyle = '#EF4444';
+            contourCtx.lineWidth = 2;
+            contourCtx.beginPath();
+            contourCtx.moveTo(contours[0].x, contours[0].y);
+            contours.forEach((p) => contourCtx.lineTo(p.x, p.y));
+            contourCtx.stroke();
+          }
+
+          resolve(contours);
+        });
+      }
+
+      function drawContourLine() {
+        return new Promise((resolve) => {
+          contourLineCtx.fillStyle = '#FFFFFF';
+          contourLineCtx.fillRect(0, 0, imageWidth, imageHeight);
+
+          if (contourPoints.length > 0) {
+            contourLineCtx.strokeStyle = '#10B981';
+            contourLineCtx.lineWidth = 2;
+            contourLineCtx.beginPath();
+            contourLineCtx.moveTo(contourPoints[0].x, contourPoints[0].y);
+            contourPoints.forEach((p) => contourLineCtx.lineTo(p.x, p.y));
+            contourLineCtx.stroke();
+          }
+          resolve();
+        });
+      }
+
+      // ===== 线性回归分析（含拟合方程） =====
+      function performRegression() {
+        return new Promise((resolve) => {
+          if (!contourPoints || contourPoints.length < 4) {
+            alert('轮廓点不足，无法进行回归分析');
+            resolve();
+            return;
+          }
+
+          const points = [...contourPoints].sort((a, b) => a.x - b.x);
+          const mid = Math.floor(points.length / 2);
+          const leftPoints = points.slice(0, mid);
+          const rightPoints = points.slice(mid);
+
+          function calculateRegression(pts) {
+            const n = pts.length;
+            if (n === 0) return { slope: 0, intercept: 0 };
+
+            let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+            pts.forEach((p) => {
+              sumX += p.x;
+              sumY += p.y;
+              sumXY += p.x * p.y;
+              sumX2 += p.x * p.x;
+            });
+
+            const denominator = n * sumX2 - sumX * sumX;
+            if (denominator === 0) {
+              return { slope: 0, intercept: sumY / n || 0 };
+            }
+
+            const slope = (n * sumXY - sumX * sumY) / denominator;
+            const intercept = (sumY - slope * sumX) / n;
+            return { slope, intercept };
+          }
+
+          const leftReg = calculateRegression(leftPoints);
+          const rightReg = calculateRegression(rightPoints);
+
+          leftSlope.textContent = leftReg.slope.toFixed(3);
+          rightSlope.textContent = rightReg.slope.toFixed(3);
+
+          const formatFormula = (slope, intercept) => {
+            const k = slope.toFixed(3);
+            const b = intercept.toFixed(3);
+            return intercept >= 0 ? `y=${k}x+${b}` : `y=${k}x${b}`;
+          };
+
+          const leftFormulaStr = formatFormula(leftReg.slope, leftReg.intercept);
+          const rightFormulaStr = formatFormula(rightReg.slope, rightReg.intercept);
+
+          leftFormula.textContent = leftFormulaStr;
+          rightFormula.textContent = rightFormulaStr;
+
+          const leftLine = leftPoints.map((p) => ({
+            x: p.x,
+            y: leftReg.slope * p.x + leftReg.intercept
+          }));
+          const rightLine = rightPoints.map((p) => ({
+            x: p.x,
+            y: rightReg.slope * p.x + rightReg.intercept
+          }));
+
+          const ctx = document.getElementById('regressionChart').getContext('2d');
+          if (regressionChart) {
+            regressionChart.destroy();
+            regressionChart = null;
+          }
+
+          regressionChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+              datasets: [
+                {
+                  label: '原始轮廓',
+                  data: points,
+                  borderWidth: 2,
+                  pointRadius: 0,
+                  fill: false
+                },
+                {
+                  label: '左侧拟合 ' + leftFormulaStr,
+                  data: leftLine,
+                  borderWidth: 2,
+                  borderDash: [5, 5],
+                  pointRadius: 0,
+                  fill: false
+                },
+                {
+                  label: '右侧拟合 ' + rightFormulaStr,
+                  data: rightLine,
+                  borderWidth: 2,
+                  borderDash: [5, 5],
+                  pointRadius: 0,
+                  fill: false
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                title: {
+                  display: true,
+                  text: '线性回归结果：左 ' + leftFormulaStr + '；右 ' + rightFormulaStr
+                },
+                legend: {
+                  display: true
+                }
+              },
+              parsing: false,
+              scales: {
+                x: {
+                  type: 'linear',
+                  title: { display: true, text: 'X 坐标' }
+                },
+                y: {
+                  type: 'linear',
+                  title: { display: true, text: 'Y 坐标' },
+                  reverse: true
+                }
+              }
+            }
+          });
+
+          resolve();
+        });
+      }
+
+      // 初始化
+      initUpload();
+    });
+  </script>
+</body>
+</html>

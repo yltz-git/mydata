@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>德州扑克胜率与AI计算器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a472a; /* 经典扑克桌绿 */
+            color: #f3f4f6;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .card-slot {
+            width: 60px;
+            height: 84px;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background-color: rgba(0, 0, 0, 0.2);
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            font-size: 1.25rem;
+            font-weight: bold;
+        }
+        @media (min-width: 640px) {
+            .card-slot {
+                width: 80px;
+                height: 112px;
+                font-size: 1.5rem;
+                border-radius: 8px;
+            }
+        }
+        .card-slot:hover {
+            border-color: rgba(255, 255, 255, 0.8);
+            background-color: rgba(0, 0, 0, 0.3);
+        }
+        .card-filled {
+            background-color: white;
+            border: 2px solid white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        .card-red {
+            color: #ef4444;
+        }
+        .card-black {
+            color: #1f2937;
+        }
+        .suit-icon {
+            font-size: 1.5em;
+            line-height: 1;
+        }
+        .modal-overlay {
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+        }
+        /* 加载动画 */
+        .loader {
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top: 3px solid #ffffff;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 sm:p-8">
+
+    <div class="max-w-3xl mx-auto">
+        <!-- 头部标题 -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-yellow-400 mb-2 shadow-sm">德州扑克战术分析板</h1>
+            <p class="text-green-200 text-sm sm:text-base">精准计算胜率 · 召唤 AI 教练复盘</p>
+        </div>
+
+        <!-- 主控制面板 -->
+        <div class="bg-green-800 bg-opacity-60 rounded-xl p-4 sm:p-6 shadow-xl border border-green-700">
+            
+            <!-- 选择人数 -->
+            <div class="mb-6 flex items-center justify-between border-b border-green-700 pb-4">
+                <label class="text-lg font-semibold text-white">玩家总人数:</label>
+                <select id="playerCount" class="bg-green-900 border border-green-600 text-white rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-400">
+                    <option value="2">2 人 (单挑)</option>
+                    <option value="3">3 人</option>
+                    <option value="4">4 人</option>
+                    <option value="5">5 人</option>
+                    <option value="6">6 人</option>
+                    <option value="7">7 人</option>
+                    <option value="8">8 人</option>
+                    <option value="9">9 人</option>
+                    <option value="10">10 人</option>
+                </select>
+            </div>
+
+            <!-- 我的底牌 -->
+            <div class="mb-8">
+                <h2 class="text-xl font-bold text-yellow-400 mb-3 flex items-center">
+                    <span class="bg-yellow-400 text-green-900 rounded-full w-6 h-6 inline-flex items-center justify-center text-sm mr-2">1</span>
+                    当前玩家底牌 (必填)
+                </h2>
+                <div class="flex gap-4" id="myHandContainer">
+                    <div class="card-slot" onclick="openCardSelector('hand', 0)" id="hand-0">+</div>
+                    <div class="card-slot" onclick="openCardSelector('hand', 1)" id="hand-1">+</div>
+                </div>
+            </div>
+
+            <!-- 公共牌 -->
+            <div class="mb-8">
+                <h2 class="text-xl font-bold text-yellow-400 mb-3 flex items-center">
+                    <span class="bg-yellow-400 text-green-900 rounded-full w-6 h-6 inline-flex items-center justify-center text-sm mr-2">2</span>
+                    桌面公共牌 (选填)
+                </h2>
+                
+                <div class="flex flex-wrap gap-x-6 gap-y-4">
+                    <!-- 翻牌 -->
+                    <div>
+                        <div class="text-sm text-green-300 mb-1 text-center">翻牌 (Flop)</div>
+                        <div class="flex gap-2">
+                            <div class="card-slot" onclick="openCardSelector('board', 0)" id="board-0">+</div>
+                            <div class="card-slot" onclick="openCardSelector('board', 1)" id="board-1">+</div>
+                            <div class="card-slot" onclick="openCardSelector('board', 2)" id="board-2">+</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 转牌 -->
+                    <div>
+                        <div class="text-sm text-green-300 mb-1 text-center">转牌 (Turn)</div>
+                        <div class="card-slot" onclick="openCardSelector('board', 3)" id="board-3">+</div>
+                    </div>
+
+                    <!-- 河牌 -->
+                    <div>
+                        <div class="text-sm text-green-300 mb-1 text-center">河牌 (River)</div>
+                        <div class="card-slot" onclick="openCardSelector('board', 4)" id="board-4">+</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="flex flex-col sm:flex-row gap-4 mt-8">
+                <button onclick="calculate()" id="calcBtn" class="flex-1 bg-yellow-500 hover:bg-yellow-400 text-green-900 font-bold text-lg py-3 px-6 rounded-lg shadow-lg transition-colors focus:outline-none focus:ring-4 focus:ring-yellow-600/50">
+                    <span id="calcText">计算胜率</span>
+                </button>
+                <button onclick="resetGame()" class="bg-green-700 hover:bg-green-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-400">
+                    清空重置
+                </button>
+            </div>
+
+            <!-- 胜率结果区域 -->
+            <div id="resultsArea" class="hidden mt-6 p-4 sm:p-6 bg-green-900 rounded-lg border border-green-700 shadow-inner">
+                <h3 class="text-lg font-bold text-white mb-4 text-center">数据推演结果 (10,000次对局模拟)</h3>
+                <div class="flex flex-col sm:flex-row justify-between gap-4">
+                    <div class="flex-1 bg-green-800 p-4 rounded text-center">
+                        <div class="text-sm text-green-300">胜率 (Win)</div>
+                        <div class="text-2xl font-bold text-green-400" id="winRate">0.00%</div>
+                    </div>
+                    <div class="flex-1 bg-green-800 p-4 rounded text-center">
+                        <div class="text-sm text-green-300">平局 (Tie)</div>
+                        <div class="text-2xl font-bold text-yellow-400" id="tieRate">0.00%</div>
+                    </div>
+                    <div class="flex-1 bg-green-800 p-4 rounded text-center">
+                        <div class="text-sm text-green-300">败率 (Loss)</div>
+                        <div class="text-2xl font-bold text-red-400" id="lossRate">0.00%</div>
+                    </div>
+                </div>
+
+                <!-- AI 教练区域 -->
+                <div class="mt-6 border-t border-green-700 pt-6">
+                    <button onclick="getAIAdvice()" id="aiBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-colors flex justify-center items-center focus:outline-none focus:ring-4 focus:ring-indigo-600/50">
+                        <span id="aiBtnText">✨ 请求 AI 牌局教练分析战术 ✨</span>
+                    </button>
+                    <div id="aiResult" class="hidden mt-4 p-5 bg-green-950 rounded-lg text-green-50 text-sm sm:text-base leading-relaxed whitespace-pre-wrap border border-indigo-500/50 shadow-inner">
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- 扑克牌选择器弹窗 -->
+    <!-- 点击灰色背景部分会自动关闭弹窗 -->
+    <div id="cardModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-center justify-center p-4" onclick="handleModalClick(event)">
+        <!-- 弹窗主体内容 -->
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]" onclick="event.stopPropagation()">
+            <div class="p-4 bg-gray-100 border-b flex justify-between items-center text-gray-800">
+                <h3 class="font-bold text-lg">选择扑克牌</h3>
+                <button onclick="closeModal()" class="text-gray-500 hover:text-red-500 text-3xl leading-none px-2 focus:outline-none">&times;</button>
+            </div>
+            
+            <div class="p-4 overflow-y-auto">
+                <div id="cardGrid" class="flex flex-col gap-4">
+                    <!-- 这里由 JavaScript 动态生成 52 张牌 -->
+                </div>
+            </div>
+
+            <div class="p-4 bg-gray-100 border-t flex justify-end gap-3">
+                <button onclick="closeModal()" class="bg-gray-200 text-gray-700 hover:bg-gray-300 px-4 py-2 rounded-md font-semibold transition-colors">
+                    取消
+                </button>
+                <button onclick="clearCurrentSlot()" class="bg-red-100 text-red-600 hover:bg-red-200 px-4 py-2 rounded-md font-semibold transition-colors">
+                    清空此位置
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 核心配置与状态管理
+        // ==========================================
+        const RANKS = "23456789TJQKA";
+        const SUITS = ['s', 'h', 'd', 'c']; // 黑桃, 红桃, 方块, 梅花
+        const SUIT_SYMBOLS = { 's': '♠', 'h': '♥', 'd': '♦', 'c': '♣' };
+        const SUIT_COLORS = { 's': 'card-black', 'h': 'card-red', 'd': 'card-red', 'c': 'card-black' };
+
+        // 全局状态
+        let state = {
+            hand: [null, null], // 底牌数组，例如 [ "As", "Kh" ]
+            board: [null, null, null, null, null], // 桌面牌，最多 5 张
+            targetType: null, // 当前正在选择的是 'hand' 还是 'board'
+            targetIndex: null // 当前正在选择的位置索引
+        };
+
+        // Gemini API 配置
+        const apiKey = ""; // 平台会自动注入
+        const GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025";
+
+        const modal = document.getElementById('cardModal');
+        const cardGrid = document.getElementById('cardGrid');
+
+        // ==========================================
+        // UI 与 交互逻辑
+        // ==========================================
+        function init() {
+            renderSlots();
+        }
+
+        function getCardHTML(cardStr) {
+            if (!cardStr) return '+';
+            const rank = cardStr[0] === 'T' ? '10' : cardStr[0];
+            const suit = cardStr[1];
+            return `<div class="text-xl sm:text-2xl leading-none">${rank}</div><div class="suit-icon leading-none">${SUIT_SYMBOLS[suit]}</div>`;
+        }
+
+        // 渲染主界面的卡槽
+        function renderSlots() {
+            // 渲染玩家底牌
+            for (let i = 0; i < 2; i++) {
+                const el = document.getElementById(`hand-${i}`);
+                if (state.hand[i]) {
+                    el.className = `card-slot card-filled ${SUIT_COLORS[state.hand[i][1]]}`;
+                    el.innerHTML = getCardHTML(state.hand[i]);
+                } else {
+                    el.className = `card-slot`;
+                    el.innerHTML = '+';
+                }
+            }
+            // 渲染公共牌
+            for (let i = 0; i < 5; i++) {
+                const el = document.getElementById(`board-${i}`);
+                if (state.board[i]) {
+                    el.className = `card-slot card-filled ${SUIT_COLORS[state.board[i][1]]}`;
+                    el.innerHTML = getCardHTML(state.board[i]);
+                } else {
+                    el.className = `card-slot`;
+                    el.innerHTML = '+';
+                }
+            }
+        }
+
+        // 获取当前已经被选中的卡牌集合
+        function getUsedCards() {
+            const used = new Set();
+            state.hand.forEach(c => c && used.add(c));
+            state.board.forEach(c => c && used.add(c));
+            return used;
+        }
+
+        // 动态生成弹窗中的 52 张牌矩阵
+        function buildModalGrid() {
+            const usedCards = getUsedCards();
+            cardGrid.innerHTML = '';
+            
+            SUITS.forEach(suit => {
+                const row = document.createElement('div');
+                row.className = 'flex flex-wrap gap-2 justify-center';
+                
+                // 从 A 倒序排到 2
+                for (let i = RANKS.length - 1; i >= 0; i--) {
+                    const rank = RANKS[i];
+                    const cardStr = rank + suit;
+                    const isUsed = usedCards.has(cardStr);
+                    
+                    const btn = document.createElement('button');
+                    btn.className = `w-10 h-14 sm:w-12 sm:h-16 rounded border text-lg sm:text-xl font-bold flex flex-col items-center justify-center transition-all
+                        ${isUsed ? 'opacity-30 cursor-not-allowed bg-gray-200 border-gray-300' : 'hover:bg-gray-100 hover:shadow border-gray-300 bg-white cursor-pointer active:bg-gray-200'} 
+                        ${SUIT_COLORS[suit]}`;
+                    
+                    btn.innerHTML = `<span class="leading-none text-base sm:text-lg">${rank === 'T' ? '10' : rank}</span><span class="leading-none text-lg sm:text-xl">${SUIT_SYMBOLS[suit]}</span>`;
+                    
+                    // 如果该牌未被选中，则绑定点击事件
+                    if (!isUsed) {
+                        btn.onclick = () => selectCard(cardStr);
+                    }
+                    row.appendChild(btn);
+                }
+                cardGrid.appendChild(row);
+            });
+        }
+
+        // 打开选择器弹窗
+        function openCardSelector(type, index) {
+            state.targetType = type;
+            state.targetIndex = index;
+            buildModalGrid();
+            modal.classList.remove('hidden');
+        }
+
+        // 关闭选择器弹窗
+        function closeModal() {
+            modal.classList.add('hidden');
+            state.targetType = null;
+            state.targetIndex = null;
+        }
+
+        // 处理点击阴影区域关闭弹窗
+        function handleModalClick(event) {
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
+
+        // 选中某张牌
+        function selectCard(cardStr) {
+            if (state.targetType !== null && state.targetIndex !== null) {
+                state[state.targetType][state.targetIndex] = cardStr;
+                closeModal();
+                renderSlots();
+                hideResults(); // 选牌变动后隐藏旧的计算结果
+            }
+        }
+
+        // 清空当前正在选择的槽位
+        function clearCurrentSlot() {
+            if (state.targetType !== null && state.targetIndex !== null) {
+                state[state.targetType][state.targetIndex] = null;
+                closeModal();
+                renderSlots();
+                hideResults();
+            }
+        }
+
+        // 隐藏并重置结果区域
+        function hideResults() {
+            document.getElementById('resultsArea').classList.add('hidden');
+            document.getElementById('aiResult').classList.add('hidden');
+            document.getElementById('aiResult').innerText = '';
+        }
+
+        // 重置整个游戏状态
+        function resetGame() {
+            state.hand = [null, null];
+            state.board = [null, null, null, null, null];
+            document.getElementById('playerCount').value = "2";
+            hideResults();
+            renderSlots();
+        }
+
+        // ==========================================
+        // 核心扑克评估引擎 (Monte Carlo)
+        // ==========================================
+        function getRankVal(r) { return RANKS.indexOf(r) + 2; }
+
+        // 评估 7 张牌，返回一个包含 6 个元素的数组代表手牌绝对价值
+        function evaluate7Cards(cards) {
+            cards.sort((a, b) => b.r - a.r); // 降序
+
+            let suitCounts = { s: [], h: [], d: [], c: [] };
+            let rankCounts = {};
+            cards.forEach(c => {
+                suitCounts[c.s].push(c);
+                rankCounts[c.r] = (rankCounts[c.r] || 0) + 1;
+            });
+
+            let flushCards = null;
+            for (let s in suitCounts) {
+                if (suitCounts[s].length >= 5) {
+                    flushCards = suitCounts[s].slice(0, 5); 
+                    break;
+                }
+            }
+
+            function getStraightHigh(cardArr) {
+                let uniqueRanks = [...new Set(cardArr.map(c => c.r))].sort((a, b) => b - a);
+                if (uniqueRanks.length < 5) return null;
+                for (let i = 0; i <= uniqueRanks.length - 5; i++) {
+                    if (uniqueRanks[i] - uniqueRanks[i + 4] === 4) return uniqueRanks[i];
+                }
+                if (uniqueRanks[0] === 14 && uniqueRanks.includes(5) && uniqueRanks.includes(4) && uniqueRanks.includes(3) && uniqueRanks.includes(2)) {
+                    return 5;
+                }
+                return null;
+            }
+
+            if (flushCards) {
+                let sfHigh = getStraightHigh(suitCounts[flushCards[0].s]); 
+                if (sfHigh) return [8, sfHigh, 0, 0, 0, 0];
+            }
+
+            let quads = [], trips = [], pairs = [], singles = [];
+            for (let r = 14; r >= 2; r--) {
+                if (rankCounts[r] === 4) quads.push(r);
+                else if (rankCounts[r] === 3) trips.push(r);
+                else if (rankCounts[r] === 2) pairs.push(r);
+                else if (rankCounts[r] === 1) singles.push(r);
+            }
+
+            if (quads.length > 0) {
+                let kicker = Math.max(...cards.map(c => c.r).filter(r => r !== quads[0]));
+                return [7, quads[0], kicker, 0, 0, 0];
+            }
+
+            if (trips.length > 0 && (trips.length > 1 || pairs.length > 0)) {
+                let pairRank = trips.length > 1 ? trips[1] : pairs[0];
+                return [6, trips[0], pairRank, 0, 0, 0];
+            }
+
+            if (flushCards) {
+                return [5, flushCards[0].r, flushCards[1].r, flushCards[2].r, flushCards[3].r, flushCards[4].r];
+            }
+
+            let straightHigh = getStraightHigh(cards);
+            if (straightHigh) return [4, straightHigh, 0, 0, 0, 0];
+
+            if (trips.length > 0) {
+                let kickers = cards.map(c => c.r).filter(r => r !== trips[0]).slice(0, 2);
+                return [3, trips[0], kickers[0], kickers[1], 0, 0];
+            }
+
+            if (pairs.length >= 2) {
+                let kicker = Math.max(...cards.map(c => c.r).filter(r => r !== pairs[0] && r !== pairs[1]));
+                return [2, pairs[0], pairs[1], kicker, 0, 0];
+            }
+
+            if (pairs.length === 1) {
+                let kickers = cards.map(c => c.r).filter(r => r !== pairs[0]).slice(0, 3);
+                return [1, pairs[0], kickers[0], kickers[1], kickers[2], 0];
+            }
+
+            return [0, cards[0].r, cards[1].r, cards[2].r, cards[3].r, cards[4].r];
+        }
+
+        function compareScores(s1, s2) {
+            for (let i = 0; i < 6; i++) {
+                if (s1[i] > s2[i]) return 1;
+                if (s1[i] < s2[i]) return -1;
+            }
+            return 0; // 平局
+        }
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        // ==========================================
+        // 计算入口与模拟执行
+        // ==========================================
+        function calculate() {
+            if (!state.hand[0] || !state.hand[1]) {
+                alert("计算前请先选择完整的 2 张您的底牌！");
+                return;
+            }
+
+            const btnText = document.getElementById('calcText');
+            btnText.innerHTML = '<span class="loader"></span> 疯狂计算中...';
+            document.getElementById('calcBtn').disabled = true;
+
+            // 给 UI 一点时间渲染 loading 动画
+            setTimeout(() => {
+                runSimulation();
+                btnText.innerHTML = '重新计算胜率';
+                document.getElementById('calcBtn').disabled = false;
+            }, 50);
+        }
+
+        function runSimulation() {
+            const numPlayers = parseInt(document.getElementById('playerCount').value);
+            const ITERATIONS = 10000; // 执行 1 万次模拟
+
+            let fullDeck = [];
+            for (let r of RANKS) {
+                for (let s of SUITS) {
+                    fullDeck.push({ str: r + s, r: getRankVal(r), s: s });
+                }
+            }
+
+            const usedStrs = getUsedCards();
+            let availableDeck = fullDeck.filter(c => !usedStrs.has(c.str));
+
+            const myHandObjs = state.hand.map(str => fullDeck.find(c => c.str === str));
+            const boardObjs = state.board.filter(str => str !== null).map(str => fullDeck.find(c => c.str === str));
+
+            let wins = 0;
+            let ties = 0;
+            let losses = 0;
+
+            for (let iter = 0; iter < ITERATIONS; iter++) {
+                shuffle(availableDeck);
+                let deckIndex = 0;
+
+                let currentBoard = [...boardObjs];
+                while (currentBoard.length < 5) {
+                    currentBoard.push(availableDeck[deckIndex++]);
+                }
+
+                let myScore = evaluate7Cards([...myHandObjs, ...currentBoard]);
+                let bestOpponentScore = [-1, 0, 0, 0, 0, 0];
+                
+                for (let p = 1; p < numPlayers; p++) {
+                    let oppHand = [availableDeck[deckIndex++], availableDeck[deckIndex++]];
+                    let oppScore = evaluate7Cards([...oppHand, ...currentBoard]);
+                    
+                    if (compareScores(oppScore, bestOpponentScore) > 0) {
+                        bestOpponentScore = oppScore;
+                    }
+                }
+
+                const result = compareScores(myScore, bestOpponentScore);
+                if (result > 0) wins++;
+                else if (result < 0) losses++;
+                else ties++;
+            }
+
+            // 更新结果显示
+            const resultsArea = document.getElementById('resultsArea');
+            resultsArea.classList.remove('hidden');
+
+            document.getElementById('winRate').innerText = ((wins / ITERATIONS) * 100).toFixed(2) + '%';
+            document.getElementById('tieRate').innerText = ((ties / ITERATIONS) * 100).toFixed(2) + '%';
+            document.getElementById('lossRate').innerText = ((losses / ITERATIONS) * 100).toFixed(2) + '%';
+            
+            // 重置 AI 面板
+            document.getElementById('aiResult').classList.add('hidden');
+            document.getElementById('aiResult').innerText = '';
+            document.getElementById('aiBtn').disabled = false;
+            document.getElementById('aiBtnText').innerText = '✨ 请求 AI 牌局教练分析战术 ✨';
+
+            // 平滑滚动到底部
+            resultsArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // ==========================================
+        // Gemini AI 战术教练逻辑
+        // ==========================================
+        async function fetchWithRetry(url, options, maxRetries = 5) {
+            let delay = 1000;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    return await response.json();
+                } catch (error) {
+                    if (i === maxRetries - 1) throw error;
+                    await new Promise(res => setTimeout(res, delay));
+                    delay *= 2; 
+                }
+            }
+        }
+
+        function formatCardForAI(cardStr) {
+            if (!cardStr) return '';
+            const rank = cardStr[0] === 'T' ? '10' : cardStr[0];
+            const suitMap = { 's': '黑桃', 'h': '红桃', 'd': '方块', 'c': '梅花' };
+            return suitMap[cardStr[1]] + rank;
+        }
+
+        async function getAIAdvice() {
+            const aiBtn = document.getElementById('aiBtn');
+            const aiBtnText = document.getElementById('aiBtnText');
+            const aiResult = document.getElementById('aiResult');
+            
+            aiBtn.disabled = true;
+            aiBtnText.innerHTML = '<span class="loader"></span> AI 正在深度推演局势...';
+            aiResult.classList.remove('hidden');
+            aiResult.innerText = '正在连线扑克大师引擎，请稍候...';
+
+            const numPlayers = document.getElementById('playerCount').value;
+            const myHandStr = state.hand.map(formatCardForAI).join(', ');
+            const boardCards = state.board.filter(c => c !== null);
+            const boardStr = boardCards.length > 0 ? boardCards.map(formatCardForAI).join(', ') : '翻牌前（无公共牌）';
+            
+            const winRate = document.getElementById('winRate').innerText;
+            const tieRate = document.getElementById('tieRate').innerText;
+            const lossRate = document.getElementById('lossRate').innerText;
+
+            const prompt = `你现在是一位世界顶级的德州扑克职业选手兼教练。
+当前对局信息如下：
+- 玩家总数：${numPlayers}人
+- 我的底牌：${myHandStr}
+- 桌面公共牌：${boardStr}
+- 经蒙特卡洛模拟，我的胜率为 ${winRate}，平局率为 ${tieRate}，败率为 ${lossRate}。
+
+请根据以上信息，为我提供一段简明扼要的战术分析。必须包含：
+1. 【牌力评估】：我目前的牌型绝对强度以及潜力如何？
+2. 【听牌分析】：如果牌面落后或有提升空间，我需要什么牌（Outs）？
+3. 【行动建议】：结合胜率和当前阶段，我应该偏向于激进（加注/全下）还是保守（过牌/弃牌）？并简述理由。
+
+请直接以清晰的段落输出分析内容，保持专业、客观、通俗易懂，无需复述我提供的原始数据。`;
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                systemInstruction: { parts: [{ text: "你是一个专业的德州扑克教练，擅长用中文分析牌局胜率与期望值，给出实用的下注建议。" }] }
+            };
+
+            try {
+                const data = await fetchWithRetry(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) {
+                    aiResult.innerText = text;
+                } else {
+                    aiResult.innerText = "抱歉，AI 教练暂时无法给出建议，请稍后再试。";
+                }
+            } catch (error) {
+                console.error("AI Error:", error);
+                aiResult.innerText = "API 请求失败，请检查网络连接或稍后重试。";
+            } finally {
+                aiBtn.disabled = false;
+                aiBtnText.innerText = '✨ 重新请求 AI 分析 ✨';
+            }
+        }
+
+        window.onload = init;
+
+    </script>
+</body>
+</html>

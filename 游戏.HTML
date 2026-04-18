@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>休闲像素冒险 - HTML 单机小游戏</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #1e3c72 0, #15192b 40%, #050608 100%);
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #f5f7ff;
+      user-select: none;
+      -webkit-user-select: none;
+      overflow: hidden;
+    }
+
+    .game-shell {
+      position: relative;
+      width: min(1100px, 95vw);
+      aspect-ratio: 16 / 9;
+      border-radius: 20px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
+      background: linear-gradient(145deg, #020617, #0b1120);
+      padding: 10px;
+    }
+
+    #gameCanvas {
+      width: 100%;
+      height: 100%;
+      border-radius: 14px;
+      display: block;
+      background: #000;
+    }
+
+    .hud-bar {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 22px;
+      padding: 4px 14px;
+      border-radius: 999px;
+      background: rgba(10, 16, 40, 0.82);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .hud-item-label {
+      opacity: 0.7;
+      margin-right: 4px;
+    }
+
+    .hud-item-value {
+      font-weight: 600;
+      color: #e5e7eb;
+    }
+
+    .hud-sep {
+      width: 1px;
+      background: linear-gradient(to bottom, transparent, rgba(148, 163, 184, 0.7), transparent);
+    }
+
+    .hint-bar {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 6px 16px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      font-size: 12px;
+      color: #e5e7eb;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      pointer-events: none;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .hint-key {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      border: 1px solid rgba(148, 163, 184, 0.8);
+      background: radial-gradient(circle at top, rgba(248, 250, 252, 0.9), rgba(15, 23, 42, 0.9));
+      box-shadow: 0 2px 0 rgba(15, 23, 42, 0.9);
+      color: #020617;
+      font-weight: 600;
+      font-size: 11px;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #e5e7eb;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .overlay.hidden {
+      display: none;
+    }
+
+    .overlay-card {
+      pointer-events: auto;
+      min-width: min(380px, 90%);
+      padding: 22px 24px 18px;
+      border-radius: 18px;
+      background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.22), transparent 55%),
+                  radial-gradient(circle at bottom right, rgba(94, 234, 212, 0.2), transparent 50%),
+                  rgba(15, 23, 42, 0.96);
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.9);
+      backdrop-filter: blur(12px);
+    }
+
+    .overlay-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: 0.06em;
+    }
+
+    .overlay-subtitle {
+      font-size: 13px;
+      opacity: 0.86;
+      margin-bottom: 16px;
+    }
+
+    .overlay-stats {
+      display: flex;
+      justify-content: center;
+      gap: 18px;
+      font-size: 12px;
+      margin-bottom: 14px;
+    }
+
+    .overlay-stat-label {
+      opacity: 0.7;
+      margin-bottom: 2px;
+    }
+
+    .overlay-stat-value {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .overlay-hints {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    .overlay-key {
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      margin: 0 3px;
+      font-size: 11px;
+    }
+
+    @media (max-width: 700px) {
+      .hud-bar {
+        font-size: 11px;
+        padding: 3px 10px;
+        gap: 14px;
+      }
+      .hint-bar {
+        font-size: 11px;
+        padding: 4px 10px;
+      }
+      .overlay-card {
+        padding: 18px 18px 14px;
+      }
+      .overlay-title {
+        font-size: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="game-shell">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD 顶部信息栏 -->
+    <div class="hud-bar">
+      <div><span class="hud-item-label">分数</span><span class="hud-item-value" id="hudScore">000</span></div>
+      <div class="hud-sep"></div>
+      <div><span class="hud-item-label">金币</span><span class="hud-item-value" id="hudCoins">0 / 0</span></div>
+      <div class="hud-sep"></div>
+      <div><span class="hud-item-label">时间</span><span class="hud-item-value" id="hudTime">0.0s</span></div>
+      <div class="hud-sep"></div>
+      <div><span class="hud-item-label">世界</span><span class="hud-item-value">1-1</span></div>
+    </div>
+
+    <!-- 底部按键提示 -->
+    <div class="hint-bar">
+      <div>操作：</div>
+      <div class="hint-key">←</div>
+      <div class="hint-key">→</div>
+      <div>移动，</div>
+      <div class="hint-key">↑</div>
+      <div class="hint-key">W</div>
+      <div class="hint-key">Space</div>
+      <div>跳跃</div>
+    </div>
+
+    <!-- 叠加界面：开始 / 结束 / 胜利 -->
+    <div id="overlay" class="overlay">
+      <div class="overlay-card">
+        <div id="overlayTitle" class="overlay-title">像素冒险 · 开始</div>
+        <div id="overlaySubtitle" class="overlay-subtitle">
+          参考超级玛丽的休闲横版闯关游戏。<br />
+          收集金币、跳过陷阱，抵达终点的旗帜！
+        </div>
+
+        <div class="overlay-stats" id="overlayStats" style="display:none;">
+          <div>
+            <div class="overlay-stat-label">通关时间</div>
+            <div class="overlay-stat-value" id="statTime">0.0s</div>
+          </div>
+          <div>
+            <div class="overlay-stat-label">金币数量</div>
+            <div class="overlay-stat-value" id="statCoins">0 / 0</div>
+          </div>
+          <div>
+            <div class="overlay-stat-label">最终分数</div>
+            <div class="overlay-stat-value" id="statScore">000</div>
+          </div>
+        </div>
+
+        <div class="overlay-hints" id="overlayHint">
+          按 <span class="overlay-key">Space</span> 或
+          <span class="overlay-key">Enter</span> 开始游戏
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+
+      // HUD DOM
+      const hudScoreEl = document.getElementById("hudScore");
+      const hudCoinsEl = document.getElementById("hudCoins");
+      const hudTimeEl = document.getElementById("hudTime");
+
+      const overlay = document.getElementById("overlay");
+      const overlayTitle = document.getElementById("overlayTitle");
+      const overlaySubtitle = document.getElementById("overlaySubtitle");
+      const overlayStats = document.getElementById("overlayStats");
+      const overlayHint = document.getElementById("overlayHint");
+      const statTime = document.getElementById("statTime");
+      const statCoins = document.getElementById("statCoins");
+      const statScore = document.getElementById("statScore");
+
+      // 世界坐标系统（逻辑尺寸），渲染时再缩放
+      const VIEWPORT_WIDTH = 960;
+      const WORLD_HEIGHT = 540;
+      const WORLD_WIDTH = 3800;
+
+      // 物理参数
+      const GRAVITY = 2400;       // 重力加速度 (px/s^2)
+      const MOVE_SPEED = 280;     // 水平移动速度
+      const JUMP_SPEED = 880;     // 起跳速度
+      const COYOTE_TIME = 0.09;   // “落脚后缓冲跳跃时间”，让手感更好
+
+      // 游戏状态枚举
+      const GAME_STATES = {
+        MENU: "menu",
+        PLAYING: "playing",
+        GAMEOVER: "gameover",
+        WIN: "win",
+      };
+
+      let gameState = GAME_STATES.MENU;
+
+      // 按键状态
+      const keys = {
+        left: false,
+        right: false,
+      };
+
+      // 全局数据
+      let level = null;
+      let player = null;
+      let cameraX = 0;
+      let lastTime = 0;
+      let worldTime = 0;      // 总时间（可用于背景动画）
+      let gameTime = 0;       // 本局游戏时间
+      let coinsCollected = 0;
+      let totalCoins = 0;
+      let score = 0;
+
+      // 渲染缩放比例
+      let scaleX = 1;
+      let scaleY = 1;
+
+      // 背景元素（山丘等）
+      const farHills = [
+        { x: -250, w: 650, h: 150, baseY: WORLD_HEIGHT - 110 },
+        { x: 450,  w: 720, h: 160, baseY: WORLD_HEIGHT - 100 },
+        { x: 1250, w: 680, h: 160, baseY: WORLD_HEIGHT - 120 },
+        { x: 2100, w: 760, h: 170, baseY: WORLD_HEIGHT - 110 },
+        { x: 3000, w: 680, h: 160, baseY: WORLD_HEIGHT - 105 },
+      ];
+
+      const nearHills = [
+        { x: -180, w: 480, h: 130, baseY: WORLD_HEIGHT - 80 },
+        { x: 600,  w: 520, h: 140, baseY: WORLD_HEIGHT - 70 },
+        { x: 1400, w: 520, h: 140, baseY: WORLD_HEIGHT - 65 },
+        { x: 2200, w: 520, h: 140, baseY: WORLD_HEIGHT - 75 },
+        { x: 3050, w: 520, h: 140, baseY: WORLD_HEIGHT - 70 },
+      ];
+
+      const clouds = [
+        { x: 150, y: 80,  w: 120 },
+        { x: 550, y: 60,  w: 130 },
+        { x: 1050, y: 90, w: 110 },
+        { x: 1700, y: 70, w: 150 },
+        { x: 2400, y: 65, w: 130 },
+        { x: 3150, y: 85, w: 120 },
+      ];
+
+      function resizeCanvas() {
+        const shell = canvas.parentElement;
+        const rect = shell.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+
+        scaleX = canvas.width / VIEWPORT_WIDTH;
+        scaleY = canvas.height / WORLD_HEIGHT;
+        ctx.imageSmoothingEnabled = true;
+      }
+
+      window.addEventListener("resize", resizeCanvas);
+
+      function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+        return (
+          ax < bx + bw &&
+          ax + aw > bx &&
+          ay < by + bh &&
+          ay + ah > by
+        );
+      }
+
+      class Player {
+        constructor(x, y) {
+          this.x = x;
+          this.y = y;
+          this.w = 40;
+          this.h = 52;
+          this.vx = 0;
+          this.vy = 0;
+          this.onGround = false;
+          this.coyoteTimer = 0;
+          this.prevBottom = this.y + this.h;
+        }
+
+        update(dt, level) {
+          this.prevBottom = this.y + this.h;
+
+          // 水平移动
+          let targetVx = 0;
+          if (keys.left) targetVx -= MOVE_SPEED;
+          if (keys.right) targetVx += MOVE_SPEED;
+          this.vx = targetVx;
+
+          // X 轴碰撞
+          let newX = this.x + this.vx * dt;
+          for (const p of level.platforms) {
+            if (rectsOverlap(newX, this.y, this.w, this.h, p.x, p.y, p.w, p.h)) {
+              if (this.vx > 0) {
+                newX = p.x - this.w - 0.01;
+              } else if (this.vx < 0) {
+                newX = p.x + p.w + 0.01;
+              }
+              this.vx = 0;
+              break;
+            }
+          }
+          this.x = newX;
+
+          // Y 轴（重力 + 碰撞）
+          this.vy += GRAVITY * dt;
+          this.onGround = false;
+          this.coyoteTimer = Math.max(0, this.coyoteTimer - dt);
+
+          let newY = this.y + this.vy * dt;
+          for (const p of level.platforms) {
+            if (rectsOverlap(this.x, newY, this.w, this.h, p.x, p.y, p.w, p.h)) {
+              if (this.vy > 0) {
+                // 脚踩到平台
+                newY = p.y - this.h - 0.01;
+                this.vy = 0;
+                this.onGround = true;
+                this.coyoteTimer = COYOTE_TIME;
+              } else if (this.vy < 0) {
+                // 头撞到平台
+                newY = p.y + p.h + 0.01;
+                this.vy = 0;
+              }
+              break;
+            }
+          }
+          this.y = newY;
+
+          // 边界限制
+          if (this.x < 0) this.x = 0;
+          if (this.x + this.w > WORLD_WIDTH) this.x = WORLD_WIDTH - this.w;
+        }
+
+        tryJump() {
+          if (this.onGround || this.coyoteTimer > 0) {
+            this.vy = -JUMP_SPEED;
+            this.onGround = false;
+            this.coyoteTimer = 0;
+          }
+        }
+
+        draw(ctx, cameraX) {
+          const sx = (this.x - cameraX) * scaleX;
+          const sy = this.y * scaleY;
+          const sw = this.w * scaleX;
+          const sh = this.h * scaleY;
+
+          // 身体底色
+          const bodyGrad = ctx.createLinearGradient(sx, sy, sx, sy + sh);
+          bodyGrad.addColorStop(0, "#f97316");
+          bodyGrad.addColorStop(1, "#ea580c");
+          ctx.fillStyle = bodyGrad;
+          ctx.fillRect(sx, sy, sw, sh);
+
+          // 头部
+          const headH = sh * 0.38;
+          const headY = sy - headH * 0.15;
+          const headGrad = ctx.createLinearGradient(sx, headY, sx, headY + headH);
+          headGrad.addColorStop(0, "#fed7aa");
+          headGrad.addColorStop(1, "#fdba74");
+          ctx.fillStyle = headGrad;
+          const headW = sw * 0.82;
+          const headX = sx + (sw - headW) * 0.5;
+          ctx.beginPath();
+          ctx.roundRect(headX, headY, headW, headH, headH * 0.45);
+          ctx.fill();
+
+          // 帽子
+          const capH = headH * 0.5;
+          ctx.fillStyle = "#1d4ed8";
+          ctx.beginPath();
+          ctx.roundRect(headX - headW * 0.12, headY - capH * 0.75, headW * 1.24, capH, capH * 0.7);
+          ctx.fill();
+
+          // 眼睛
+          const eyeR = headW * 0.08;
+          const eyeY = headY + headH * 0.42;
+          let eyeOffset = sw * 0.12;
+          if (this.vx < 0) eyeOffset = sw * 0.32;
+          ctx.fillStyle = "#0f172a";
+          ctx.beginPath();
+          ctx.arc(sx + sw * 0.35 + eyeOffset * 0.2, eyeY, eyeR, 0, Math.PI * 2);
+          ctx.arc(sx + sw * 0.55 + eyeOffset * 0.2, eyeY, eyeR, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 腿
+          const legH = sh * 0.32;
+          const legY = sy + sh - legH;
+          const legW = sw * 0.32;
+          ctx.fillStyle = "#334155";
+          ctx.fillRect(sx + sw * 0.16, legY, legW, legH);
+          ctx.fillRect(sx + sw * 0.52, legY, legW, legH);
+
+          // 鞋
+          const shoeH = legH * 0.55;
+          const shoeY = legY + legH - shoeH * 0.9;
+          ctx.fillStyle = "#0f172a";
+          ctx.fillRect(sx + sw * 0.14, shoeY, legW * 1.1, shoeH);
+          ctx.fillRect(sx + sw * 0.50, shoeY, legW * 1.1, shoeH);
+        }
+      }
+
+      function buildLevel() {
+        const groundY = WORLD_HEIGHT - 80;
+        const platforms = [];
+        const coins = [];
+        const enemies = [];
+
+        function addPlatform(x, y, w, h) {
+          platforms.push({ x, y, w, h });
+        }
+        function addCoin(cx, cy) {
+          coins.push({
+            x: cx - 12,
+            y: cy - 12,
+            w: 24,
+            h: 24,
+            collected: false,
+            bobOffset: Math.random() * Math.PI * 2,
+          });
+        }
+        function addEnemy(x, y, leftBound, rightBound) {
+          enemies.push({
+            x,
+            y,
+            w: 42,
+            h: 40,
+            vx: 90,
+            leftBound,
+            rightBound,
+            alive: true,
+          });
+        }
+
+        // 地面主平台
+        addPlatform(0, groundY, 1100, 80);
+        addPlatform(1300, groundY, 900, 80);
+        addPlatform(2400, groundY, 900, 80);
+        addPlatform(3400, groundY, 600, 80);
+
+        // 中高平台
+        addPlatform(520, groundY - 140, 200, 26);
+        addPlatform(820, groundY - 220, 160, 26);
+
+        addPlatform(1400, groundY - 120, 220, 26);
+        addPlatform(1700, groundY - 200, 220, 26);
+
+        addPlatform(2150, groundY - 160, 200, 26);
+        addPlatform(2550, groundY - 230, 220, 26);
+
+        addPlatform(3050, groundY - 160, 200, 26);
+        addPlatform(3320, groundY - 260, 200, 26);
+
+        // 悬空小台阶
+        addPlatform(1180, groundY - 50, 80, 22);
+        addPlatform(1240, groundY - 100, 80, 22);
+        addPlatform(1300, groundY - 150, 80, 22);
+
+        // 悬崖缺口
+        // 实际上就是地面段之间的空白，玩家掉下去算死亡
+
+        // 金币布置
+        // 出生附近
+        addCoin(260, groundY - 60);
+        addCoin(320, groundY - 100);
+        addCoin(380, groundY - 60);
+
+        // 第一组高台
+        addCoin(620, groundY - 180);
+        addCoin(700, groundY - 220);
+        addCoin(780, groundY - 260);
+
+        // 中段金币桥
+        for (let i = 0; i < 5; i++) {
+          addCoin(1450 + i * 60, groundY - 170);
+        }
+
+        // 中后段金币
+        addCoin(1800, groundY - 240);
+        addCoin(1880, groundY - 210);
+        addCoin(1960, groundY - 180);
+
+        // 尾段
+        addCoin(2600, groundY - 270);
+        addCoin(2680, groundY - 240);
+        addCoin(2760, groundY - 210);
+
+        addCoin(3100, groundY - 200);
+        addCoin(3180, groundY - 230);
+        addCoin(3260, groundY - 260);
+
+        // 小怪
+        addEnemy(650, groundY - 40, 600, 820);
+        addEnemy(1500, groundY - 40, 1400, 1700);
+        addEnemy(2450, groundY - 40, 2400, 2700);
+        addEnemy(3150, groundY - 40, 3050, 3400);
+
+        // 终点旗帜
+        const flag = {
+          x: WORLD_WIDTH - 120,
+          y: groundY - 260,
+          w: 40,
+          h: 260,
+        };
+
+        return { platforms, coins, enemies, flag };
+      }
+
+      function resetGame() {
+        level = buildLevel();
+        const groundY = WORLD_HEIGHT - 80;
+        player = new Player(120, groundY - 52);
+        cameraX = 0;
+        gameTime = 0;
+        score = 0;
+        coinsCollected = 0;
+        totalCoins = level.coins.length;
+        gameState = GAME_STATES.MENU;
+        updateHUD();
+        showMenuOverlay();
+      }
+
+      function startPlaying() {
+        gameState = GAME_STATES.PLAYING;
+        overlay.classList.add("hidden");
+        gameTime = 0;
+      }
+
+      function triggerGameOver() {
+        gameState = GAME_STATES.GAMEOVER;
+        overlay.classList.remove("hidden");
+        overlayTitle.textContent = "游戏结束";
+        overlaySubtitle.textContent = "不小心撞到小怪或跌入深渊了，再试一次吧！";
+        overlayStats.style.display = "flex";
+        statTime.textContent = gameTime.toFixed(1) + "s";
+        statCoins.textContent = coinsCollected + " / " + totalCoins;
+        statScore.textContent = score.toString().padStart(3, "0");
+        overlayHint.innerHTML =
+          '按 <span class="overlay-key">R</span> 或 <span class="overlay-key">Enter</span> 重新开始';
+      }
+
+      function triggerWin() {
+        gameState = GAME_STATES.WIN;
+        overlay.classList.remove("hidden");
+        overlayTitle.textContent = "通关成功！🎉";
+        overlaySubtitle.textContent = "你顺利到达了终点旗帜，干得漂亮！";
+        overlayStats.style.display = "flex";
+        statTime.textContent = gameTime.toFixed(1) + "s";
+        statCoins.textContent = coinsCollected + " / " + totalCoins;
+        statScore.textContent = score.toString().padStart(3, "0");
+        overlayHint.innerHTML =
+          '按 <span class="overlay-key">R</span> 或 <span class="overlay-key">Enter</span> 再玩一局';
+      }
+
+      function showMenuOverlay() {
+        overlay.classList.remove("hidden");
+        overlayTitle.textContent = "像素冒险 · 开始";
+        overlaySubtitle.innerHTML =
+          "参考超级玛丽的休闲横版闯关游戏。<br/>收集金币、躲避小怪，冲向终点旗帜！";
+        overlayStats.style.display = "none";
+        overlayHint.innerHTML =
+          '按 <span class="overlay-key">Space</span> 或 <span class="overlay-key">Enter</span> 开始游戏';
+      }
+
+      function updateHUD() {
+        hudScoreEl.textContent = score.toString().padStart(3, "0");
+        hudCoinsEl.textContent = coinsCollected + " / " + totalCoins;
+        hudTimeEl.textContent = gameTime.toFixed(1) + "s";
+      }
+
+      function updateGame(dt) {
+        worldTime += dt;
+
+        if (gameState === GAME_STATES.PLAYING) {
+          gameTime += dt;
+
+          player.update(dt, level);
+
+          // 相机跟随
+          const targetCamX = player.x - VIEWPORT_WIDTH * 0.35;
+          cameraX = Math.max(0, Math.min(WORLD_WIDTH - VIEWPORT_WIDTH, targetCamX));
+
+          // 更新小怪
+          for (const e of level.enemies) {
+            if (!e.alive) continue;
+            e.x += e.vx * dt;
+            if (e.x < e.leftBound) {
+              e.x = e.leftBound;
+              e.vx *= -1;
+            } else if (e.x + e.w > e.rightBound) {
+              e.x = e.rightBound - e.w;
+              e.vx *= -1;
+            }
+          }
+
+          // 玩家与小怪碰撞
+          for (const e of level.enemies) {
+            if (!e.alive) continue;
+            if (rectsOverlap(player.x, player.y, player.w, player.h, e.x, e.y, e.w, e.h)) {
+              // 判断是踩到还是被撞
+              if (player.vy > 0 && player.prevBottom <= e.y + 10) {
+                // 踩死小怪
+                e.alive = false;
+                player.vy = -JUMP_SPEED * 0.55;
+                score += 20;
+              } else {
+                triggerGameOver();
+                updateHUD();
+                return;
+              }
+            }
+          }
+
+          // 玩家捡金币
+          for (const c of level.coins) {
+            if (!c.collected && rectsOverlap(player.x, player.y, player.w, player.h, c.x, c.y, c.w, c.h)) {
+              c.collected = true;
+              coinsCollected += 1;
+              score += 10;
+            }
+          }
+
+          // 掉进深渊
+          if (player.y > WORLD_HEIGHT + 200) {
+            triggerGameOver();
+          }
+
+          // 触碰旗帜即通关
+          const f = level.flag;
+          if (rectsOverlap(player.x, player.y, player.w, player.h, f.x - 10, f.y, f.w + 20, f.h)) {
+            // 额外根据时间和金币加分
+            score += Math.max(0, Math.floor(200 - gameTime));
+            score += coinsCollected * 5;
+            triggerWin();
+          }
+
+          updateHUD();
+        }
+      }
+
+      function drawBackground() {
+        // 天空渐变
+        const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        skyGrad.addColorStop(0, "#4f46e5");
+        skyGrad.addColorStop(0.4, "#0ea5e9");
+        skyGrad.addColorStop(1, "#0f172a");
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 远山
+        ctx.fillStyle = "#1f2937";
+        for (const h of farHills) {
+          const sx = (h.x - cameraX * 0.4) * scaleX;
+          const baseY = h.baseY * scaleY;
+          const sw = h.w * scaleX;
+          const sh = h.h * scaleY;
+          ctx.beginPath();
+          ctx.moveTo(sx, baseY);
+          ctx.quadraticCurveTo(sx + sw / 2, baseY - sh, sx + sw, baseY);
+          ctx.lineTo(sx + sw, canvas.height);
+          ctx.lineTo(sx, canvas.height);
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        // 近山
+        ctx.fillStyle = "#111827";
+        for (const h of nearHills) {
+          const sx = (h.x - cameraX * 0.7) * scaleX;
+          const baseY = h.baseY * scaleY;
+          const sw = h.w * scaleX;
+          const sh = h.h * scaleY;
+          ctx.beginPath();
+          ctx.moveTo(sx, baseY);
+          ctx.quadraticCurveTo(sx + sw / 2, baseY - sh, sx + sw, baseY);
+          ctx.lineTo(sx + sw, canvas.height);
+          ctx.lineTo(sx, canvas.height);
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        // 云朵
+        ctx.fillStyle = "rgba(248, 250, 252, 0.96)";
+        const cloudBob = Math.sin(worldTime * 0.7) * 5;
+        for (const cl of clouds) {
+          const cx = (cl.x - cameraX * 0.2) * scaleX;
+          const cy = (cl.y + cloudBob) * scaleY;
+          const cw = cl.w * scaleX;
+          const ch = (cl.w * 0.55) * scaleY;
+
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, cw * 0.55, ch * 0.5, 0, 0, Math.PI * 2);
+          ctx.ellipse(cx - cw * 0.3, cy + ch * 0.05, cw * 0.35, ch * 0.45, 0, 0, Math.PI * 2);
+          ctx.ellipse(cx + cw * 0.3, cy + ch * 0.05, cw * 0.35, ch * 0.45, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // 远景地面色块（柔和过渡）
+        const groundGrad = ctx.createLinearGradient(0, WORLD_HEIGHT * 0.7 * scaleY, 0, canvas.height);
+        groundGrad.addColorStop(0, "#022c22");
+        groundGrad.addColorStop(1, "#052e16");
+        ctx.fillStyle = groundGrad;
+        ctx.fillRect(0, WORLD_HEIGHT * 0.7 * scaleY, canvas.width, canvas.height);
+      }
+
+      function drawPlatforms() {
+        for (const p of level.platforms) {
+          const sx = (p.x - cameraX) * scaleX;
+          const sy = p.y * scaleY;
+          const sw = p.w * scaleX;
+          const sh = p.h * scaleY;
+
+          // 立体块体
+          const topGrad = ctx.createLinearGradient(sx, sy, sx, sy + sh);
+          topGrad.addColorStop(0, "#16a34a");
+          topGrad.addColorStop(1, "#166534");
+          ctx.fillStyle = topGrad;
+          ctx.fillRect(sx, sy, sw, sh * 0.45);
+
+          const sideGrad = ctx.createLinearGradient(sx, sy + sh * 0.45, sx, sy + sh);
+          sideGrad.addColorStop(0, "#4b5563");
+          sideGrad.addColorStop(1, "#111827");
+          ctx.fillStyle = sideGrad;
+          ctx.fillRect(sx, sy + sh * 0.45, sw, sh * 0.55);
+
+          // 顶部小草纹理
+          const grassH = sh * 0.12;
+          ctx.fillStyle = "rgba(190, 242, 100, 0.9)";
+          for (let i = 0; i < sw; i += 12) {
+            ctx.beginPath();
+            ctx.moveTo(sx + i, sy + grassH);
+            ctx.quadraticCurveTo(
+              sx + i + 6,
+              sy,
+              sx + i + 12,
+              sy + grassH
+            );
+            ctx.fill();
+          }
+        }
+      }
+
+      function drawCoins() {
+        const pulse = (Math.sin(worldTime * 4) + 1) * 0.12 + 0.9;
+        for (const c of level.coins) {
+          if (c.collected) continue;
+
+          const bob = Math.sin(worldTime * 3 + c.bobOffset) * 6;
+          const cx = (c.x + c.w / 2 - cameraX) * scaleX;
+          const cy = (c.y + c.h / 2 + bob) * scaleY;
+          const rOuter = (c.w * 0.6) * scaleX * pulse;
+          const rInner = rOuter * 0.58;
+
+          // 外环
+          const grad = ctx.createRadialGradient(cx, cy, rInner * 0.4, cx, cy, rOuter);
+          grad.addColorStop(0, "#fde68a");
+          grad.addColorStop(0.5, "#fbbf24");
+          grad.addColorStop(1, "#92400e");
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(cx, cy, rOuter, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 内环
+          ctx.beginPath();
+          ctx.arc(cx, cy, rInner, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(250, 250, 249, 0.1)";
+          ctx.fill();
+
+          // 中间竖条
+          ctx.fillStyle = "rgba(254, 243, 199, 0.95)";
+          const barW = rInner * 0.4;
+          const barH = rInner * 1.2;
+          ctx.fillRect(cx - barW / 2, cy - barH / 2, barW, barH);
+        }
+      }
+
+      function drawEnemies() {
+        for (const e of level.enemies) {
+          if (!e.alive) continue;
+
+          const sx = (e.x - cameraX) * scaleX;
+          const sy = e.y * scaleY;
+          const sw = e.w * scaleX;
+          const sh = e.h * scaleY;
+
+          const bodyGrad = ctx.createLinearGradient(sx, sy, sx, sy + sh);
+          bodyGrad.addColorStop(0, "#f97373");
+          bodyGrad.addColorStop(1, "#b91c1c");
+          ctx.fillStyle = bodyGrad;
+          ctx.beginPath();
+          ctx.roundRect(sx, sy + sh * 0.15, sw, sh * 0.75, sh * 0.4);
+          ctx.fill();
+
+          // 眼睛
+          ctx.fillStyle = "#0f172a";
+          const eyeR = sh * 0.11;
+          const eyeY = sy + sh * 0.32;
+          ctx.beginPath();
+          ctx.arc(sx + sw * 0.32, eyeY, eyeR, 0, Math.PI * 2);
+          ctx.arc(sx + sw * 0.68, eyeY, eyeR, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 脚
+          ctx.fillStyle = "#111827";
+          const footH = sh * 0.22;
+          ctx.fillRect(sx + sw * 0.08, sy + sh * 0.78, sw * 0.34, footH);
+          ctx.fillRect(sx + sw * 0.58, sy + sh * 0.78, sw * 0.34, footH);
+        }
+      }
+
+      function drawFlag() {
+        const f = level.flag;
+        const poleX = (f.x - cameraX) * scaleX;
+        const poleY = f.y * scaleY;
+        const poleW = 10 * scaleX;
+        const poleH = f.h * scaleY;
+
+        // 旗杆
+        const poleGrad = ctx.createLinearGradient(poleX, poleY, poleX, poleY + poleH);
+        poleGrad.addColorStop(0, "#e5e7eb");
+        poleGrad.addColorStop(1, "#9ca3af");
+        ctx.fillStyle = poleGrad;
+        ctx.fillRect(poleX, poleY, poleW, poleH);
+
+        // 顶球
+        ctx.fillStyle = "#facc15";
+        ctx.beginPath();
+        ctx.arc(poleX + poleW / 2, poleY, poleW * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 旗帜
+        const flagLen = 80 * scaleX;
+        const flagH = 46 * scaleY;
+        const t = worldTime * 2.8;
+        const wave = Math.sin(t) * 4 * scaleY;
+
+        ctx.beginPath();
+        ctx.moveTo(poleX + poleW, poleY + poleH * 0.08);
+        ctx.lineTo(poleX + poleW + flagLen * 0.5, poleY + poleH * 0.08 + wave);
+        ctx.lineTo(poleX + poleW + flagLen, poleY + poleH * 0.08 + flagH / 2);
+        ctx.lineTo(poleX + poleW + flagLen * 0.5, poleY + poleH * 0.08 + flagH - wave);
+        ctx.lineTo(poleX + poleW, poleY + poleH * 0.08 + flagH);
+        ctx.closePath();
+
+        const flagGrad = ctx.createLinearGradient(
+          poleX + poleW, poleY + poleH * 0.08,
+          poleX + poleW + flagLen, poleY + poleH * 0.08 + flagH
+        );
+        flagGrad.addColorStop(0, "#22c55e");
+        flagGrad.addColorStop(1, "#15803d");
+        ctx.fillStyle = flagGrad;
+        ctx.fill();
+
+        // 星星
+        ctx.fillStyle = "rgba(248, 250, 252, 0.95)";
+        const cx = poleX + poleW + flagLen * 0.65;
+        const cy = poleY + poleH * 0.08 + flagH * 0.48;
+        const r = 6 * Math.min(scaleX, scaleY);
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const angle = i * (Math.PI * 2) / 5 - Math.PI / 2;
+          const rx = cx + Math.cos(angle) * r;
+          const ry = cy + Math.sin(angle) * r;
+          if (i === 0) ctx.moveTo(rx, ry);
+          else ctx.lineTo(rx, ry);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      function drawGame() {
+        drawBackground();
+        drawPlatforms();
+        drawCoins();
+        drawEnemies();
+        drawFlag();
+
+        if (player) {
+          player.draw(ctx, cameraX);
+        }
+
+        // 如果处于菜单或结束状态，暗一点画面
+        if (gameState === GAME_STATES.MENU || gameState === GAME_STATES.GAMEOVER || gameState === GAME_STATES.WIN) {
+          ctx.fillStyle = "rgba(15, 23, 42, 0.35)";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+
+      function gameLoop(timestamp) {
+        if (!lastTime) lastTime = timestamp;
+        const dt = Math.min(0.05, (timestamp - lastTime) / 1000); // 最大帧间隔 0.05s
+        lastTime = timestamp;
+
+        updateGame(dt);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawGame();
+
+        requestAnimationFrame(gameLoop);
+      }
+
+      // 键盘事件
+      window.addEventListener("keydown", function (e) {
+        const key = e.key;
+
+        // 阻止方向键和空格滚动页面
+        if (["ArrowLeft", "ArrowRight", "ArrowUp", " ", "Spacebar"].includes(key)) {
+          e.preventDefault();
+        }
+
+        if (key === "ArrowLeft" || key === "a" || key === "A") {
+          keys.left = true;
+        }
+        if (key === "ArrowRight" || key === "d" || key === "D") {
+          keys.right = true;
+        }
+
+        if (key === "ArrowUp" || key === "w" || key === "W" || key === " " || key === "Spacebar") {
+          if (gameState === GAME_STATES.PLAYING && player) {
+            player.tryJump();
+          }
+        }
+
+        // 开始游戏 / 重新开始
+        if (key === "Enter" || key === " " || key === "Spacebar") {
+          if (gameState === GAME_STATES.MENU) {
+            startPlaying();
+          } else if (gameState === GAME_STATES.GAMEOVER || gameState === GAME_STATES.WIN) {
+            resetGame();
+            startPlaying();
+          }
+        }
+
+        if (key === "r" || key === "R") {
+          if (gameState === GAME_STATES.GAMEOVER || gameState === GAME_STATES.WIN) {
+            resetGame();
+            startPlaying();
+          }
+        }
+      });
+
+      window.addEventListener("keyup", function (e) {
+        const key = e.key;
+        if (key === "ArrowLeft" || key === "a" || key === "A") {
+          keys.left = false;
+        }
+        if (key === "ArrowRight" || key === "d" || key === "D") {
+          keys.right = false;
+        }
+      });
+
+      // 初始化
+      resizeCanvas();
+      resetGame();
+      requestAnimationFrame(gameLoop);
+    })();
+  </script>
+</body>
+</html>
